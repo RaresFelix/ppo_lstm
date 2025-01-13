@@ -1,0 +1,17 @@
+gymnasium
+gymnasium[mujoco]
+numpy
+pandas
+matplotlib
+plotly
+seaborn
+jax
+jaxtyping
+tqdm
+tyro
+tensorboard
+gymnasium[other]
+flask
+sqlalchemy
+einops
+opencv-python
