@@ -17,33 +17,37 @@ class Args:
     project_name: str = 'ppo_lstm'
     env_id: str = 'CartPole-v1'
     torch_deterministic: bool = True
-    total_timesteps: int = int(1e6) 
+    total_steps: int = int(1e6) 
     seed: int = 0
-    num_steps: int = 2048
-    num_envs: int = 2
-    minibatch_size: int = 64
+    num_steps: int = 1024
+    num_envs: int = 1
+    minibatch_size: int = 256
     buffer_size: int = int(1e5) 
+    debug_probes: bool = False
 
     n_epochs: int = 0 # will be calculated
     batch_size: int = 0
     num_iterations: int = 0
+    num_minibatches: int = 0
 
+    update_epochs: int = 4
     gamma: float = 0.99
     gae_lambda: float = 0.95
     clip_range: float = 0.2
     vf_coef: float = 0.5
     ent_coef: float = 0.01
     max_grad_norm: float = 0.5
-    lr: float = 3e-4
+    learning_rate: float = 2.5e-4
     eps_max: float = 1e-3
     eps_min: float = 1e-5
 
     hidden_size: int = 64
 
     def __post_init__(self):
-        self.n_epochs = self.total_timesteps // (self.num_steps * self.num_envs)
+        self.n_epochs = self.total_steps // (self.num_steps * self.num_envs)
         self.batch_size = self.num_steps * self.num_envs
-        self.num_iterations = self.total_timesteps // self.batch_size
+        self.num_iterations = self.total_steps // self.batch_size
+        self.num_minibatches = self.batch_size // (self.minibatch_size * self.num_envs)
 
 #for now, assume discrete action space
 
@@ -54,24 +58,35 @@ class RolloutBuffer():
         self.device = device
         self.args = args
 
-        self.observations = torch.zeros((args.buffer_size, obs_dim), dtype=torch.float32, device=device)
-        self.dones = torch.zeros((args.buffer_size,), dtype=torch.float32, device=device)
-        self.actions = torch.zeros((args.buffer_size,), dtype=torch.float32, device=device)
-        self.values = torch.zeros((args.buffer_size,), dtype=torch.float32, device=device)
-        self.advantages = torch.zeros((args.buffer_size,), dtype=torch.float32, device=device)
-        self.log_prob = torch.zeros((args.buffer_size,), dtype=torch.float32, device=device)
+        self.observations = torch.zeros((args.buffer_size, args.num_envs, obs_dim), dtype=torch.float32, device=device)
+        self.dones = torch.zeros((args.buffer_size, args.num_envs,), dtype=torch.float32, device=device)
+        self.actions = torch.zeros((args.buffer_size, args.num_envs,), dtype=torch.float32, device=device)
+        self.values = torch.zeros((args.buffer_size, args.num_envs,), dtype=torch.float32, device=device)
+        self.advantages = torch.zeros((args.buffer_size, args.num_envs,), dtype=torch.float32, device=device)
+        self.log_prob = torch.zeros((args.buffer_size, args.num_envs,), dtype=torch.float32, device=device)
 
-        self.next_obs = torch.zeros((args.buffer_size, obs_dim), dtype=torch.float32, device=device)
-        self.next_dones = torch.zeros((args.buffer_size,), dtype=torch.float32, device=device)
-        self.rewards = torch.zeros((args.buffer_size,), dtype=torch.float32, device=device)
+        self.next_obs = torch.zeros((args.buffer_size, args.num_envs, obs_dim), dtype=torch.float32, device=device)
+        self.next_dones = torch.zeros((args.buffer_size, args.num_envs,), dtype=torch.float32, device=device)
+        self.rewards = torch.zeros((args.buffer_size, args.num_envs,), dtype=torch.float32, device=device)
 
-        self.actor_hidden = torch.zeros((args.buffer_size, 2, args.hidden_size), dtype=torch.float32, device=device)
-        self.critic_hidden = torch.zeros((args.buffer_size, 2, args.hidden_size), dtype=torch.float32, device=device)
+        self.actor_hidden = torch.zeros((args.buffer_size, 2, args.num_envs, args.hidden_size), dtype=torch.float32, device=device)
+        self.critic_hidden = torch.zeros((args.buffer_size, 2, args.num_envs, args.hidden_size), dtype=torch.float32, device=device)
 
         self.idx = 0
         self.full = False
     
     def add(self, obs, done, act, log_prob, val, next_obs, next_done, rew, actor_hidden, critic_hidden):
+        obs = torch.as_tensor(obs, dtype=torch.float32, device=self.device)
+        done = torch.as_tensor(done, dtype=torch.float32, device=self.device)
+        act = torch.as_tensor(act, dtype=torch.float32, device=self.device)
+        log_prob = torch.as_tensor(log_prob, dtype=torch.float32, device=self.device)
+        val = torch.as_tensor(val, dtype=torch.float32, device=self.device)
+        next_obs = torch.as_tensor(next_obs, dtype=torch.float32, device=self.device)
+        next_done = torch.as_tensor(next_done, dtype=torch.float32, device=self.device)
+        rew = torch.as_tensor(rew, dtype=torch.float32, device=self.device)
+        actor_hidden = torch.as_tensor(actor_hidden, dtype=torch.float32, device=self.device)
+        critic_hidden = torch.as_tensor(critic_hidden, dtype=torch.float32, device=self.device)
+        
         self.observations[self.idx] = obs
         self.dones[self.idx] = done
         self.actions[self.idx] = act
@@ -91,9 +106,9 @@ class RolloutBuffer():
 
     def add_last(self, next_done, next_value, last_critic_hidden):
         #this is for gae calculation
-        self.last_done = next_done
-        self.last_value = next_value
-        self.last_critic_hidden = last_critic_hidden
+        self.last_done = torch.as_tensor(next_done, dtype=torch.float32, device=self.device) 
+        self.last_value = torch.as_tensor(next_value, dtype=torch.float32, device=self.device)
+        self.last_critic_hidden = torch.as_tensor(last_critic_hidden, dtype=torch.float32, device=self.device)
     
     def reset(self):
         self.idx = 0
@@ -101,32 +116,35 @@ class RolloutBuffer():
     
     def get_batch(self):
         with torch.no_grad():
-            self.advantages = compute_gae(self.args, self.rewards, self.values, self.dones, self.next_dones, self.last_value)
-            result = [self.observations, self.dones, self.values, self.actions, self.log_prob, self.advantages, self.rewards, self.next_obs, self.next_dones, self.actor_hidden, self.critic_hidden]
             if self.full:
+                self.advantages = compute_gae(self.args, self.rewards, self.values, self.dones, self.last_done, self.last_value)
+                result = [self.observations, self.dones, self.values, self.actions, self.log_prob, self.advantages, self.rewards, self.next_obs, self.next_dones, self.actor_hidden, self.critic_hidden]
                 return result
             else:
-                return [x[:self.idx] for x in result]
+                self.advantages = compute_gae(self.args, self.rewards[:self.idx], self.values[:self.idx], self.dones[:self.idx], self.last_done, self.last_value)
+                result = [self.observations[:self.idx], self.dones[:self.idx], self.values[:self.idx], self.actions[:self.idx], self.log_prob[:self.idx], self.advantages[:self.idx], self.rewards[:self.idx], self.next_obs[:self.idx], self.next_dones[:self.idx], self.actor_hidden[:self.idx], self.critic_hidden[:self.idx]]
+                return result
+                
 
 def layer_init(layer, std=np.sqrt(2), bias_const=0.0):
     nn.init.orthogonal_(layer.weight, std)
     nn.init.constant_(layer.bias, bias_const)
     return layer
 
-def compute_gae(args, rewards: Float[Tensor, 'num_envs num_steps'], values, dones, next_dones, next_values: Float[Tensor, 'num_envs']):
+def compute_gae(args, rewards: Float[Tensor, 'num_steps num_envs'], values, dones, last_dones, last_values: Float[Tensor, 'num_envs']):
     gamma = args.gamma
     gae_lambda = args.gae_lambda
 
-    all_values = torch.cat([values, next_values.unsqueeze(1)], dim=1)
-    all_dones = torch.cat([dones, next_dones.unsqueeze(1)], dim=1)
+    all_values = torch.cat([values, last_values.unsqueeze(0)], dim=0)
+    all_dones = torch.cat([dones, last_dones.unsqueeze(0)], dim=0)
     # s0, a0, r0, ....
     all_values *= 1 - all_dones # Enforce V(s) = 0 if s is terminal
-    deltas = rewards + gamma * all_values[:, 1:] * (1 - all_dones[:, :-1]) - all_values[:, :-1]
+    deltas = rewards + gamma * all_values[1:] * (1 - all_dones[:-1]) - all_values[:-1]
     advantages = deltas.clone()
     
-    factors = gamma * gae_lambda * (1 - all_dones[:, :-1])
+    factors = gamma * gae_lambda * (1 - all_dones[:-1])
     for t in range(deltas.size(1) - 2, -1, -1):
-        advantages[:, t] += factors[:, t] * advantages[:, t + 1]
+        advantages[t] += factors[t] * advantages[t + 1]
 
     return advantages
 
@@ -134,7 +152,17 @@ class Actor(nn.Module):
     def __init__(self, obs_dim: Int, act_dim: Int, args: Args):
         super(Actor, self).__init__()
         self.lstm = nn.LSTMCell(obs_dim, args.hidden_size)
-        self.fc = nn.Linear(args.hidden_size, act_dim)
+        for name, param in self.lstm.named_parameters():
+            if 'bias' in name:
+                nn.init.constant_(param, 0)
+        #self.fc = nn.Linear(args.hidden_size, act_dim)
+        self.fc = nn.Sequential(
+            nn.Linear(args.hidden_size, 128),
+            nn.Tanh(),
+            nn.Linear(128, 128),
+            nn.Tanh(),
+            nn.Linear(128, act_dim)
+        )
         self.args = args
     
     def forward(self, x: Float[Tensor, 'batch obs_dim'], hidden: Tuple[Tensor, Tensor]) -> Tuple[Tensor, Tuple[Tensor, Tensor]]:
@@ -155,12 +183,19 @@ class Critic(nn.Module):
     def __init__(self, obs_dim: Int, args: Args):
         super(Critic, self).__init__()
         self.lstm = nn.LSTMCell(obs_dim, args.hidden_size)
-        self.fc = nn.Linear(args.hidden_size, 1)
+        #self.fc = nn.Linear(args.hidden_size, 1)
+        self.fc = nn.Sequential(
+            nn.Linear(args.hidden_size, 128),
+            nn.Tanh(),
+            nn.Linear(128, 128),
+            nn.Tanh(),
+            nn.Linear(128, 1)
+        )
     
     def forward(self, x: Float[Tensor, 'batch obs_dim'], hidden: Tuple[Tensor, Tensor]) -> Tuple[Tensor, Tuple[Tensor, Tensor]]:
         hidden = self.lstm(x, (hidden[0], hidden[1]))
         hidden = torch.stack(hidden)
-        y = self.fc(hidden[0]).squeeze(-1)
+        y = self.fc(hidden[0]).squeeze(-1)                                                                                                                                                                                                                      
         return y, hidden
 
 class Agent():
@@ -177,8 +212,8 @@ class Agent():
         self.actor = Actor(self.obs_dim, self.act_dim, args).to(device)
         self.critic = Critic(self.obs_dim, args).to(device)
 
-        self.actor_optimizer = optim.Adam(self.actor.parameters(), lr=args.lr)
-        self.critic_optimizer = optim.Adam(self.critic.parameters(), lr=args.lr)
+        self.actor_optimizer = optim.Adam(self.actor.parameters(), lr=args.learning_rate)
+        self.critic_optimizer = optim.Adam(self.critic.parameters(), lr=args.learning_rate)
 
         self.envs = envs
 
@@ -198,9 +233,10 @@ class Agent():
             self.step += self.args.num_envs
 
             with torch.no_grad():
-                action, log_prob, actor_hidden = self.actor.get_action(obs_tensor, actor_hidden)
+                action, log_prob, next_actor_hidden = self.actor.get_action(obs_tensor, actor_hidden)
 
             next_observation, reward, termination, truncation, infos = self.envs.step(action.cpu().numpy())
+
             next_done = np.logical_or(termination, truncation)
 
             if 'episode' in infos and self.writer and infos['_episode'].sum():
@@ -213,9 +249,19 @@ class Agent():
                 self.writer.add_scalar('episode/terminals', number_terminals, self.step)
 
             with torch.no_grad():
-                value, critic_hidden = self.critic(obs_tensor, critic_hidden)
+                value, next_critic_hidden = self.critic(obs_tensor, critic_hidden)
             
             self.buffer.add(obs_tensor, done, action, log_prob, value, next_observation, next_done, reward, actor_hidden, critic_hidden)
+
+            actor_hidden = next_actor_hidden
+            critic_hidden = next_critic_hidden
+
+            for i in range(self.args.num_envs):
+                #if done[i] or next_done[i]:
+                actor_hidden[0, i].zero_()
+                actor_hidden[1, i].zero_()
+                critic_hidden[0, i].zero_()
+                critic_hidden[1, i].zero_()
 
             observation = next_observation
             done = next_done
@@ -228,42 +274,68 @@ class Agent():
         
 
     def train(self):
-        progress_bar = tqdm(range(self.args.total_timesteps))
+        progress_bar = tqdm(range(self.args.total_steps))
         self.step = 0
 
+        print('num_mini_batches', self.args.num_minibatches)
         for step in range(self.args.num_iterations):
             progress_bar.update(self.args.batch_size)
             progress_bar.set_description(f'Step {step} / {self.args.num_iterations}')
 
+            time0 = time.time()
             self.rollout()
+            rollout_time = time.time() - time0
+            time0 = time.time()
 
             rollout_batch = self.buffer.get_batch()
 
+            if self.args.debug_probes:
+                with torch.no_grad():
+                    for obs_v in np.linspace(-1., 1., 5):
+                        obs_v_tens = torch.tensor(obs_v, dtype=torch.float32, device=self.device).unsqueeze(0)
+                        v_hidden = torch.zeros((2, self.args.hidden_size,), device=self.device)
+                        val = self.critic(obs_v_tens, v_hidden)[0].item()
+
+                        self.writer.add_scalar(f'probes/critic_value_{obs_v}', val, self.step)
+
+            log_on_this_step = (step % 1 == 0)
+
             for epoch in range(self.args.update_epochs):
-                idx = torch.randperm(self.args.buffer_size, device = self.device)
+                length = rollout_batch[0].size(0)
+                idx = torch.randperm(length, device = self.device)
                 for i in range(self.args.num_minibatches):
                     mini_idx = idx[i * self.args.minibatch_size: (i + 1) * self.args.minibatch_size]
                     minibatch = [x[mini_idx] for x in rollout_batch]
 
-                    observations, dones, values, actions, log_probs, advantages, rewards, next_obs, next_dones, actor_hidden, critic_hidden = minibatch
+                    with torch.no_grad():
+                        observations, dones, values, actions, log_probs, advantages, rewards, next_obs, next_dones, actor_hidden, critic_hidden = minibatch
 
                     # Critic loss
-                    values_pred = self.critic(observations, critic_hidden)
+                    
+                    # critic accpts only one batch size, so we flatten
+                    obs_view = observations.view(-1, observations.shape[-1])
+                    critic_hidden_view = critic_hidden.view(2, -1, critic_hidden.shape[-1])
+                    values_pred_view, _ = self.critic(obs_view, critic_hidden_view)
+
+                    values_pred = values_pred_view.view(-1, self.args.num_envs) # back to (batch_size, num_envs)
+
                     with torch.no_grad():
                         returns = values + advantages
                     VF_deltas = (values_pred - returns) * (1 - dones)
                     VF_loss = VF_deltas.pow(2).sum() / ((1 - dones).sum() + 1e-5)
 
                     # Actor loss
-                    action_logits, _ = self.actor(observations, actor_hidden)
+                    actor_hidden_view = actor_hidden.view(2, -1, actor_hidden.shape[-1])
+                    action_logits_view, _ = self.actor(obs_view, actor_hidden_view)
+                    action_logits = action_logits_view.view(-1, self.args.num_envs, self.act_dim)
                     dist = torch.distributions.Categorical(logits=action_logits)
                     entropy = dist.entropy().mean()
                     new_log_probs = dist.log_prob(actions)
 
-                    approx_kl = ((ratio - 1) - log_ratio).mean()
-
                     log_ratio = new_log_probs - log_probs
                     ratio = torch.exp(log_ratio)
+
+                    approx_kl = ((ratio - 1) - log_ratio).mean()
 
                     clipped_ratio = ratio.clamp(1 - self.args.clip_range, 1 + self.args.clip_range)
                     with torch.no_grad():
@@ -274,7 +346,7 @@ class Agent():
                     surr2 = advantages * clipped_ratio
                     actor_loss = -torch.min(surr1, surr2).mean()
 
-                    if self.writer:
+                    if self.writer and i == 0 and epoch == 0 and log_on_this_step:
                         self.writer.add_scalar('training/approx_kl', approx_kl, self.step)
                         self.writer.add_scalar('training/clip_fraction', fraction_clipped, self.step)
                         self.writer.add_scalar('training/entropy', entropy, self.step)
@@ -293,6 +365,8 @@ class Agent():
                     VF_loss.backward()
                     torch.nn.utils.clip_grad_norm_(self.critic.parameters(), self.args.max_grad_norm)
                     self.critic_optimizer.step()
+            train_time = time.time() - time0
+            print(f'Rollout time: {rollout_time:.2f}s, Train time: {train_time:.2f}s')
 
 def make_env(env_id: str, idx: int, record_video: bool = False):
     def thunk():
@@ -306,9 +380,8 @@ def make_env(env_id: str, idx: int, record_video: bool = False):
 def main():
     args = Args()
     run_name = f'{args.project_name}_{args.env_id}_{int(time.time())}'
-#    writer = SummaryWriter('runs/' + run_name)
-    writer = None
-    envs = gym.vector.SyncVectorEnv(
+    writer = SummaryWriter('runs/' + run_name)
+    envs = gym.vector.AsyncVectorEnv(
         [make_env(args.env_id, i) for i in range(args.num_envs)]
     )
 
@@ -319,5 +392,5 @@ def main():
     agent = Agent(args, envs, writer)
     agent.train()
 
-if __name__ == 'main':
+if __name__ == '__main__':
     main()

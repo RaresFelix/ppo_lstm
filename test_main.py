@@ -11,21 +11,24 @@ from torch.utils.tensorboard import SummaryWriter
 def train_agent(env_id, total_timesteps, seed = 1, gamma = .2):
     """Helper function to train agent"""
     run_name = f'{env_id}__{int(time.time())}'
-    writer = SummaryWriter('runs/debug/' + run_name)
+    writer = SummaryWriter('runs/debug/' + run_name, max_queue=100)
     args = Args(
         env_id=env_id,
         total_steps=total_timesteps,
-        debug_probes=True,
         seed=seed,
-        num_envs=4,
+        num_envs=1,
         gamma=gamma,
         gae_lambda=.95,
-        clip_coef=0.2,
+        clip_range=0.2,
         vf_coef=0.5,
-        learning_rate=2e-3,
+        learning_rate=5e-3,
         ent_coef=0.01,
         max_grad_norm=0.5,
-        num_steps=8,  
+        num_steps=4,  
+        minibatch_size=4,
+        n_epochs=8,
+        hidden_size=4,
+        debug_probes=True,
     )
     envs = gym.vector.SyncVectorEnv([make_env(env_id, idx) for idx in range(args.num_envs)])
     agent = Agent(args, envs, writer)
@@ -36,7 +39,7 @@ def get_value(agent, obs):
     """Helper function to get value"""
     with torch.no_grad():
         obs = torch.tensor(obs, dtype=torch.float32, device=agent.device)
-        value = agent.critic(obs)
+        value, hidden = agent.critic(obs, torch.zeros((2, agent.args.hidden_size,), device=agent.device))
 
     return value
 
@@ -61,7 +64,7 @@ def test_probe2_learning(capsys):
     gym.envs.registration.register(id='Probe2-v0', entry_point=Probe2)
 
     with capsys.disabled():
-        agent = train_agent('Probe2-v0', 200)
+        agent = train_agent('Probe2-v0', 500)
     
     # Test both possible observations
     pos_obs = np.array([1.], dtype=np.float32)
@@ -87,7 +90,7 @@ def test_probe3_learning(capsys):
     gamma = .2
 
     with capsys.disabled():
-        agent = train_agent('Probe3-v0', 200, gamma=gamma)
+        agent = train_agent('Probe3-v0', 400, gamma=gamma)
     
     # Test both observations
     first_obs = np.array([0.], dtype=np.float32)
@@ -111,17 +114,18 @@ def test_probe4_learning(capsys):
     gym.envs.registration.register(id='Probe4-v0', entry_point=Probe4)
 
     with capsys.disabled():
-        agent = train_agent('Probe4-v0', 200)  # Needs more steps to learn policy
+        agent = train_agent('Probe4-v0', 400)  # Needs more steps to learn policy
     
     # Get logits for the zero observation
     obs = np.array([0.], dtype=np.float32)
     obs_tensor = torch.tensor(obs, dtype=torch.float32, device=agent.device)
     
     with torch.no_grad():
-        logits = agent.actor(obs_tensor)
+        hidden = torch.zeros((2, agent.args.hidden_size,), device=agent.device)
+        logits = agent.actor(obs_tensor, hidden)[0]
         probs = F.softmax(logits, dim=-1)
 
-        values = agent.critic(obs_tensor).squeeze().item()
+        values = agent.critic(obs_tensor, hidden)[0].squeeze().item()
     
     tolerance = .05
     expected_value = 1.
@@ -137,24 +141,25 @@ def test_probe5_learning(capsys):
     gym.envs.registration.register(id='Probe5-v0', entry_point=Probe5)
 
     with capsys.disabled():
-        agent = train_agent('Probe5-v0', 500)  # Needs more steps to learn observation-dependent policy
+        agent = train_agent('Probe5-v0', 400)  # Needs more steps to learn observation-dependent policy
     
     # Test both possible observations
     pos_obs = np.array([1.], dtype=np.float32)
     neg_obs = np.array([-1.], dtype=np.float32)
     
+    hidden = torch.zeros((2, agent.args.hidden_size,), device=agent.device)
     obs_tensor_pos = torch.tensor(pos_obs, dtype=torch.float32, device=agent.device)
     obs_tensor_neg = torch.tensor(neg_obs, dtype=torch.float32, device=agent.device)
     
     with torch.no_grad():
-        logits_pos = agent.actor(obs_tensor_pos)
-        logits_neg = agent.actor(obs_tensor_neg)
+        logits_pos = agent.actor(obs_tensor_pos, hidden)[0]
+        logits_neg = agent.actor(obs_tensor_neg, hidden)[0]
         
         probs_pos = F.softmax(logits_pos, dim=-1)
         probs_neg = F.softmax(logits_neg, dim=-1)
         
-        values_pos = agent.critic(obs_tensor_pos).squeeze()
-        values_neg = agent.critic(obs_tensor_neg).squeeze()
+        values_pos = agent.critic(obs_tensor_pos, hidden)[0].squeeze()
+        values_neg = agent.critic(obs_tensor_neg, hidden)[0].squeeze()
     
     value_tolerance = 0.1
     prob_tolerance = 0.8  # Minimum probability for correct action
