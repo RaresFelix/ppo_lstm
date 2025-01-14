@@ -51,6 +51,20 @@ class Actor(nn.Module):
         act = dist.sample()
         log_prob = dist.log_prob(act)
         return act, log_prob, hidden
+    
+    def get_action_logprob_and_entropy(self, 
+                           obs: Float[Tensor, "batch obs_dim"],
+                           act: Float[Tensor, "batch act_dim"],
+                           hidden: Tuple[Float[Tensor, "batch hidden_size"], Float[Tensor, "batch hidden_size"]]
+                           ) -> Tuple[Float[Tensor, "batch"],
+                                    Float[Tensor, "batch"],
+                                    Tuple[Float[Tensor, "batch hidden_size"], Float[Tensor, "batch hidden_size"]]]:
+        y, hidden = self(obs, hidden)
+        dist = torch.distributions.Categorical(logits=y)
+        log_prob = dist.log_prob(act)
+        entropy = dist.entropy()
+        return log_prob, entropy, hidden
+
 
 class Critic(nn.Module):
     def __init__(self, obs_dim: Int, args: Args):
