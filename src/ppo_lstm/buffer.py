@@ -1,5 +1,6 @@
 import torch
 from jaxtyping import Int, Float
+import einops
 from torch import Tensor
 from typing import List
 from .config import Args
@@ -26,6 +27,55 @@ def compute_gae(args: Args,
 
     return advantages
 
+
+def reshape_sequence_data(tensor: Tensor, sequence_length: int, is_lstm_hidden: bool = False) -> Tensor:
+    """
+    Reshapes a tensor from (timesteps, environments, ...) to (batch, sequence_length, ...).
+    Handles both regular tensors and LSTM hidden states differently.
+    
+    Args:
+        tensor: Input tensor of shape:
+            - Regular: (timesteps, environments, ...) or (timesteps, environments)
+            - LSTM hidden: (timesteps, 2, environments, hidden_size)
+        sequence_length: Length of each sequence in the output
+        is_lstm_hidden: Whether the tensor is an LSTM hidden state
+        
+    Returns:
+        Reshaped tensor of shape:
+            - Regular: (batch, sequence_length, ...) where batch = num_environments * num_sequences
+            - LSTM hidden: (batch, sequence_length, 2, hidden_size)
+    """
+    # Calculate number of complete sequences
+    num_timesteps = tensor.shape[0]
+    num_sequences_per_env = num_timesteps // sequence_length
+    num_valid_timesteps = num_sequences_per_env * sequence_length
+    
+    # Truncate to complete sequences
+    tensor = tensor[:num_valid_timesteps]
+    
+    if is_lstm_hidden:
+        # LSTM hidden states have shape (timesteps, 2, environments, hidden_size)
+        pattern = '(sequences sequence_length) lstm_states environments hidden_size -> (environments sequences) sequence_length lstm_states hidden_size'
+        return einops.rearrange(
+            tensor,
+            pattern,
+            sequence_length=sequence_length,
+            sequences=num_sequences_per_env,
+            lstm_states=2
+        )
+    else:
+        # Regular tensors have shape (timesteps, environments, ...)
+        if len(tensor.shape) > 2:  # Has additional dimensions
+            pattern = '(sequences sequence_length) environments ... -> (environments sequences) sequence_length ...'
+        else:  # Just (timesteps, environments)
+            pattern = '(sequences sequence_length) environments -> (environments sequences) sequence_length'
+            
+        return einops.rearrange(
+            tensor,
+            pattern,
+            sequence_length=sequence_length,
+            sequences=num_sequences_per_env
+        )
 
 class RolloutBuffer():
     def __init__(self, obs_dim: Int, args: Args, device = None):
@@ -102,14 +152,49 @@ class RolloutBuffer():
     def reset(self):
         self.idx = 0
         self.full = False
-    
-    def get_batch(self) -> list[Float[Tensor, "..."]]:
+
+    def get_batch(self) -> List[Float[Tensor, "..."]]:
         with torch.no_grad():
             if self.full:
-                self.advantages = compute_gae(self.args, self.rewards, self.values, self.dones, self.last_done, self.last_value)
-                result = [self.observations, self.dones, self.values, self.actions, self.log_prob, self.advantages, self.rewards, self.next_obs, self.next_dones, self.actor_hidden, self.critic_hidden]
-                return result
-            else:
-                self.advantages = compute_gae(self.args, self.rewards[:self.idx], self.values[:self.idx], self.dones[:self.idx], self.last_done, self.last_value)
-                result = [self.observations[:self.idx], self.dones[:self.idx], self.values[:self.idx], self.actions[:self.idx], self.log_prob[:self.idx], self.advantages[:self.idx], self.rewards[:self.idx], self.next_obs[:self.idx], self.next_dones[:self.idx], self.actor_hidden[:self.idx], self.critic_hidden[:self.idx]]
-                return result
+                self.idx = len(self.observations)
+            if self.idx % self.args.seq_len != 0:
+                self.idx = self.idx // self.args.seq_len * self.args.seq_len  # cut off incomplete sequence
+                
+            self.advantages = compute_gae(
+                self.args,
+                self.rewards[:self.idx],
+                self.values[:self.idx],
+                self.dones[:self.idx],
+                self.last_done,
+                self.last_value
+            )
+            
+            # Regular tensors
+            regular_tensors = [
+                self.observations[:self.idx],
+                self.dones[:self.idx],
+                self.values[:self.idx],
+                self.actions[:self.idx],
+                self.log_prob[:self.idx],
+                self.advantages[:self.idx],
+                self.rewards[:self.idx],
+                self.next_obs[:self.idx],
+                self.next_dones[:self.idx]
+            ]
+            
+            # LSTM hidden states
+            lstm_tensors = [
+                self.actor_hidden[:self.idx],
+                self.critic_hidden[:self.idx]
+            ]
+            
+            # Process regular tensors and LSTM hidden states separately
+            result = [
+                reshape_sequence_data(tensor, self.args.seq_len)
+                for tensor in regular_tensors
+            ] + [
+                reshape_sequence_data(tensor, self.args.seq_len, is_lstm_hidden=True)
+                for tensor in lstm_tensors
+            ]
+                
+            return result

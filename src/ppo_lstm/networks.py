@@ -81,9 +81,9 @@ class Critic(nn.Module):
     
     def forward(self,
                 x: Float[Tensor, "batch obs_dim"],
-                hidden: Tuple[Float[Tensor, "batch hidden_size"], Float[Tensor, "batch hidden_size"]]
+                hidden: Tuple[Float[Tensor, "batch hidden_size"], Float[Tensor, "batch hidden_size"]] # or single tensor of shape (2 batch hidden_size)
                 ) -> Tuple[Float[Tensor, "batch"],
-                          Tuple[Float[Tensor, "batch hidden_size"], Float[Tensor, "batch hidden_size"]]]:
+                          Float[Tensor, "2 batch hidden_size"]]:
         hidden = self.lstm(x, (hidden[0], hidden[1]))
         hidden = torch.stack(hidden)
         y = self.fc(hidden[0]).squeeze(-1)                                                                                                                                                                                                                      

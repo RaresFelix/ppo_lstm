@@ -20,9 +20,9 @@ class Args:
     torch_deterministic: bool = True
     total_steps: int = int(1e6) 
     seed: int = 0
-    num_steps: int = 1024
-    num_envs: int = 1
-    minibatch_size: int = 256
+    num_steps: int = 128
+    num_envs: int = 8
+    minibatch_size: int = 128
     buffer_size: int = int(1e5) 
     debug_probes: bool = False
 
@@ -31,7 +31,7 @@ class Args:
     num_iterations: int = 0
     num_minibatches: int = 0
 
-    update_epochs: int = 4
+    update_epochs: int = 2
     gamma: float = 0.99
     gae_lambda: float = 0.95
     clip_range: float = 0.2

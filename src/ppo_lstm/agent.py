@@ -79,7 +79,7 @@ class Agent():
         self.buffer.reset()
         freq_terminal_log = 2
         cnt_terminal_log = 0
-
+        mask = np.array([1, 0, 1, 0])
         for step in range(self.args.num_steps):
             obs_tensor = torch.tensor(observation, dtype=torch.float32, device=self.device)
             self.step += self.args.num_envs
@@ -88,6 +88,7 @@ class Agent():
                 action, log_prob, next_actor_hidden = self.actor.get_action(obs_tensor, actor_hidden)
 
             next_observation, reward, termination, truncation, infos = self.envs.step(action.cpu().numpy())
+            next_observation = next_observation * mask
 
             next_done = np.logical_or(termination, truncation)
 
@@ -153,29 +154,53 @@ class Agent():
         returns = values + advantages
         pred_values = torch.zeros_like(returns)
 
-        for step in range(len(observations)):
-            obs_tensor = observations[step]
+        critic_hidden = einops.rearrange(critic_hidden, 'batch c2 hidden -> c2 batch hidden', c2 = 2)
+        for step in range(self.args.seq_len):
+            obs_tensor = observations[:, step]
             current_value, critic_hidden = self.critic(obs_tensor, critic_hidden)
-            pred_values[step] = current_value
+            critic_hidden = critic_hidden * (1 - dones[:, step].unsqueeze(0).unsqueeze(-1))
+            pred_values[:, step] = current_value
         
         VF_deltas = (pred_values - returns) * (1 - dones)
         VF_loss = VF_deltas.pow(2).sum() / ((1 - dones).sum() + 1e-5)
 
         return VF_loss
-    
+        
     def _get_actor_loss(self, observations, actions, prev_logprob, dones, advantages, actor_hidden):
-        """Simulate LSTM and get BTT loss for actor."""
-
+        """Simulate LSTM and get BTT loss for actor.
+        
+        Args:
+            observations: shape (batch, seq_len, obs_dim)
+            actions: shape (batch, seq_len)
+            prev_logprob: shape (batch, seq_len)
+            dones: shape (batch, seq_len)
+            advantages: shape (batch, seq_len)
+            actor_hidden: shape (2, batch, hidden_size)
+        """
         log_probs = torch.zeros_like(advantages)
         entropy = torch.zeros_like(advantages)
-        for step in range(len(observations)):
-            obs_tensor = observations[step]
-            act_tensor = actions[step]
-            log_probs[step], entropy[step], actor_hidden = self.actor.get_action_logprob_and_entropy(obs_tensor, act_tensor, actor_hidden)
+    
+        # Reshape actor hidden to (2, batch, hidden_size)
+        actor_hidden = einops.rearrange(actor_hidden, 'batch c2 hidden -> c2 batch hidden', c2=2)
+        
+        # Process sequence step by step
+        for step in range(self.args.seq_len):
+            obs_tensor = observations[:, step]
+            act_tensor = actions[:, step]
+            
+            step_log_probs, step_entropy, actor_hidden = self.actor.get_action_logprob_and_entropy(
+                obs_tensor, act_tensor, actor_hidden
+            )
+            
+            # Reset hidden state for done episodes
+            actor_hidden = actor_hidden * (1 - dones[:, step].unsqueeze(0).unsqueeze(-1))
+            
+            log_probs[:, step] = step_log_probs
+            entropy[:, step] = step_entropy
         
         log_ratio = log_probs - prev_logprob
         ratio = torch.exp(log_ratio)
-
+        
         approx_kl = ((ratio - 1) - log_ratio).mean()
         
         with torch.no_grad():
@@ -183,13 +208,14 @@ class Agent():
             fraction_clipped = is_clipped.float().mean()
         
         clipped_ratio = ratio.clamp(1 - self.args.clip_range, 1 + self.args.clip_range)
-
         surr1 = advantages * ratio
         surr2 = advantages * clipped_ratio
-        actor_loss = -torch.min(surr1, surr2).mean()
-
-        return actor_loss, entropy.mean(), approx_kl, fraction_clipped
         
+        valid_steps = (1 - dones)
+        actor_loss = -(torch.min(surr1, surr2) * valid_steps).sum() / (valid_steps.sum() + 1e-5)
+        entropy_mean = (entropy * valid_steps).sum() / (valid_steps.sum() + 1e-5)
+
+        return actor_loss, entropy_mean, approx_kl, fraction_clipped
 
     def train(self) -> None:
         progress_bar = tqdm(range(self.args.total_steps))
@@ -205,7 +231,7 @@ class Agent():
             rollout_time = time.time() - time0
             time0 = time.time()
 
-            rollout_batch = self.buffer.get_batch()
+            rollout_batch = self.buffer.get_batch() # each tensor here has shape (batch_size, seq_len, ...)
 
             if self.args.debug_probes:
                 self._run_debug_probes()
@@ -218,33 +244,32 @@ class Agent():
                 if early_stop:
                     break
 
-                length = rollout_batch[0].size(0)
-                with torch.no_grad():
-                    observations, dones, values, actions, log_probs, advantages, rewards, next_obs, next_dones, actor_hidden, critic_hidden = rollout_batch
+                for i in range(self.args.num_minibatches):
+                    minibatch = [x[i*self.args.minibatch_size:(i+1)*self.args.minibatch_size] for x in rollout_batch]
+                    observations, dones, values, actions, log_probs, advantages, rewards, next_obs, next_dones, actor_hidden, critic_hidden = minibatch
 
-                # Critic loss
-                VF_loss = self._get_critic_loss(observations, dones, values, advantages, critic_hidden[0])
+                    # Critic loss
+                    VF_loss = self._get_critic_loss(observations, dones, values, advantages, critic_hidden[:, 0])
 
-                # Actor loss
+                    # Actor loss
+                    actor_loss, entropy, approx_kl, fraction_clipped = self._get_actor_loss(observations, actions, log_probs, dones, advantages, actor_hidden[:, 0])
+                    if self.writer and (random.randint(0, freq_train_log) == 0) and log_on_this_step:
+                        self._log_training_stats(approx_kl, fraction_clipped, entropy, actor_loss, VF_loss, advantages, values)
 
-                actor_loss, entropy, approx_kl, fraction_clipped = self._get_actor_loss(observations, actions, log_probs, dones, advantages, actor_hidden[0])
-                if self.writer and (random.randint(0, freq_train_log) == 0) and log_on_this_step:
-                    self._log_training_stats(approx_kl, fraction_clipped, entropy, actor_loss, VF_loss, advantages, values)
+                    total_actor_loss = actor_loss + self.args.entropy_coef * entropy 
+                    
+                    if approx_kl > self.args.max_kl:
+                        early_stop = True
+                        break
+                    
+                    self.actor_optimizer.zero_grad()
+                    total_actor_loss.backward()
+                    torch.nn.utils.clip_grad_norm_(self.actor.parameters(), self.args.max_grad_norm)
+                    self.actor_optimizer.step()
 
-                total_actor_loss = actor_loss + self.args.entropy_coef * entropy 
-                
-                if approx_kl > self.args.max_kl:
-                    early_stop = True
-                    break
-                
-                self.actor_optimizer.zero_grad()
-                total_actor_loss.backward()
-                torch.nn.utils.clip_grad_norm_(self.actor.parameters(), self.args.max_grad_norm)
-                self.actor_optimizer.step()
-
-                self.critic_optimizer.zero_grad()
-                VF_loss.backward()
-                torch.nn.utils.clip_grad_norm_(self.critic.parameters(), self.args.max_grad_norm)
-                self.critic_optimizer.step()
+                    self.critic_optimizer.zero_grad()
+                    VF_loss.backward()
+                    torch.nn.utils.clip_grad_norm_(self.critic.parameters(), self.args.max_grad_norm)
+                    self.critic_optimizer.step()
             train_time = time.time() - time0
             print(f'Rollout time: {rollout_time:.2f}s, Train time: {train_time:.2f}s')
