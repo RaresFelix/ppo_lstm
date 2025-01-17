@@ -79,7 +79,6 @@ class Agent():
         self.buffer.reset()
         freq_terminal_log = 2
         cnt_terminal_log = 0
-        mask = np.array([1, 0, 1, 0])
         for step in range(self.args.num_steps):
             obs_tensor = torch.tensor(observation, dtype=torch.float32, device=self.device)
             self.step += self.args.num_envs
@@ -88,7 +87,6 @@ class Agent():
                 action, log_prob, next_actor_hidden = self.actor.get_action(obs_tensor, actor_hidden)
 
             next_observation, reward, termination, truncation, infos = self.envs.step(action.cpu().numpy())
-            next_observation = next_observation * mask
 
             next_done = np.logical_or(termination, truncation)
 
@@ -256,7 +254,7 @@ class Agent():
                     if self.writer and (random.randint(0, freq_train_log) == 0) and log_on_this_step:
                         self._log_training_stats(approx_kl, fraction_clipped, entropy, actor_loss, VF_loss, advantages, values)
 
-                    total_actor_loss = actor_loss + self.args.entropy_coef * entropy 
+                    total_actor_loss = actor_loss - self.args.entropy_coef * entropy 
                     
                     if approx_kl > self.args.max_kl:
                         early_stop = True
