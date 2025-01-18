@@ -5,32 +5,36 @@ import numpy as np
 import gymnasium as gym
 import torch.nn.functional as F
 from probes import Probe1, Probe2, Probe3, Probe4, Probe5
-from ppo import Args, Agent, make_env
+from src.ppo_lstm import Args, Agent
+from src.ppo_lstm.main import make_env
 from torch.utils.tensorboard import SummaryWriter
 
 def train_agent(env_id, total_timesteps, seed = 1, gamma = .2):
     """Helper function to train agent"""
+    #total_timesteps *= 8 # for the outrageous number of envs
     run_name = f'{env_id}__{int(time.time())}'
     writer = SummaryWriter('runs/debug/' + run_name, max_queue=100)
     args = Args(
         env_id=env_id,
         total_steps=total_timesteps,
         seed=seed,
-        num_envs=1,
+        num_envs=4,
+        num_steps=8, 
+        seq_len=2,
+        update_epochs=8,
+        minibatch_size=4,
+
         gamma=gamma,
         gae_lambda=.95,
         clip_range=0.2,
         vf_coef=0.5,
-        learning_rate=5e-3,
-        ent_coef=0.01,
+        learning_rate=1e-3,
+        entropy_coef=0.01,
         max_grad_norm=0.5,
-        num_steps=4,  
-        minibatch_size=4,
-        n_epochs=8,
         hidden_size=4,
         debug_probes=True,
     )
-    envs = gym.vector.SyncVectorEnv([make_env(env_id, idx) for idx in range(args.num_envs)])
+    envs = gym.vector.SyncVectorEnv([make_env(env_id, idx, run_name) for idx in range(args.num_envs)])
     agent = Agent(args, envs, writer)
     agent.train()
     return agent
@@ -141,7 +145,7 @@ def test_probe5_learning(capsys):
     gym.envs.registration.register(id='Probe5-v0', entry_point=Probe5)
 
     with capsys.disabled():
-        agent = train_agent('Probe5-v0', 400)  # Needs more steps to learn observation-dependent policy
+        agent = train_agent('Probe5-v0', 2000)  # Needs more steps to learn observation-dependent policy
     
     # Test both possible observations
     pos_obs = np.array([1.], dtype=np.float32)
