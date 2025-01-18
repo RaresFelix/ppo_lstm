@@ -18,13 +18,24 @@ from .agent import Agent
 def make_env(env_id: str, idx: Int, run_name: str, record_video: bool = False) -> Callable:
     def thunk():
         if 'MiniGrid' in env_id:
-            env = gym.make("MiniGrid-MemoryS7-v0", agent_view_size=7, render_mode='rgb_array')
-            #env = minigrid.wrappers.DictObservationSpaceWrapper(env)
-            env = minigrid.wrappers.RGBImgPartialObsWrapper(env, tile_size=28)
-            env = minigrid.wrappers.ImgObsWrapper(env)
-            env = gym.wrappers.RecordEpisodeStatistics(env)
-            if record_video and idx == 0:
-                env = gym.wrappers.RecordVideo(env, f'videos/{run_name}')
+            if 'video' in env_id:
+                from ..enviroments.minigrid_memory import MinigridMemoryEnv
+                env = MinigridMemoryEnv(
+                    render_mode='rgb_array', 
+                    agent_view_size=7,
+                    record_video=record_video and idx == 0,
+                    run_name=run_name
+                )
+                env = gym.wrappers.RecordEpisodeStatistics(env)
+            else:
+                from ..enviroments.minigrid_memory import MiniGridMemoryBasicEnv
+                env = MiniGridMemoryBasicEnv(
+                    render_mode='rgb_array',
+                    agent_view_size=7,
+                    record_video=record_video and idx == 0,
+                    run_name=run_name
+                )
+                env = gym.wrappers.RecordEpisodeStatistics(env)
         elif env_id == 'CartPole-v1-CNN':
             env = gym.make('CartPole-v1', render_mode='rgb_array')
             env = gym.wrappers.AddRenderObservation(env)

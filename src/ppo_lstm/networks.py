@@ -47,11 +47,11 @@ class Actor(BaseEncoder):
                 nn.init.constant_(param, 0)
 
         self.fc = nn.Sequential(
-            layer_init(nn.Linear(args.hidden_size, 128)),
+            layer_init(nn.Linear(args.hidden_size, args.hidden_layer_size)),
             nn.Tanh(),
-            layer_init(nn.Linear(128, 128)),
+            layer_init(nn.Linear(args.hidden_layer_size, args.hidden_layer_size)),
             nn.Tanh(),
-            layer_init(nn.Linear(128, act_dim), std=.01)
+            layer_init(nn.Linear(args.hidden_layer_size, act_dim), std=.01)
         )
         self.args = args
     
@@ -102,11 +102,11 @@ class Critic(BaseEncoder):
                 nn.init.constant_(param, 0)
                 
         self.fc = nn.Sequential(
-            layer_init(nn.Linear(args.hidden_size, 128)),
+            layer_init(nn.Linear(args.hidden_size, args.hidden_layer_size)),
             nn.Tanh(),
-            layer_init(nn.Linear(128, 128)),
+            layer_init(nn.Linear(args.hidden_layer_size, args.hidden_layer_size)),
             nn.Tanh(),
-            layer_init(nn.Linear(128, 1), std=1.)
+            layer_init(nn.Linear(args.hidden_layer_size, 1), std=1.)
         )
     
     def forward(self,
