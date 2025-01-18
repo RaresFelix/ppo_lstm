@@ -9,9 +9,11 @@ jax
 jaxtyping
 tqdm
 tyro
+minigrid
 tensorboard
 gymnasium[other]
 flask
 sqlalchemy
 einops
 opencv-python
+pytest-xdist
