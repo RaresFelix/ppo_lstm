@@ -11,15 +11,41 @@ def layer_init(layer, std=np.sqrt(2), bias_const=0.0):
     nn.init.constant_(layer.bias, bias_const)
     return layer
 
+class BaseEncoder(nn.Module):
+    def __init__(self, obs_dim: Tuple[int, ...]):
+        super().__init__()
+        print('The obs_dim is: ', obs_dim)
+        self.is_cnn = len(obs_dim) > 1
+        
+        if self.is_cnn:
+            self.encoder = nn.Sequential(
+                layer_init(nn.Conv2d(obs_dim[0], 32, 8, 4)),
+                nn.ReLU(),
+                layer_init(nn.Conv2d(32, 64, 4, 2)),
+                nn.ReLU(),
+                layer_init(nn.Conv2d(64, 64, 3, 1)),
+                nn.ReLU(),
+                nn.Flatten()
+            )
+            dummy_input = torch.zeros((1, *obs_dim))
+            dummy_output = self.encoder(dummy_input)
+            self.encoder_output_size = dummy_output.shape[1]
+        else:
+            self.encoder = nn.Identity()
+            self.encoder_output_size = obs_dim[0]
+    
+    def encode(self, x: Tensor) -> Tensor:
+        return self.encoder(x)
 
-class Actor(nn.Module):
-    def __init__(self, obs_dim: Int, act_dim: Int, args: Args):
-        super(Actor, self).__init__()
-        self.lstm = nn.LSTMCell(obs_dim, args.hidden_size)
+class Actor(BaseEncoder):
+    def __init__(self, obs_dim: Tuple[int, ...], act_dim: Int, args: Args):
+        super().__init__(obs_dim)
+        
+        self.lstm = nn.LSTMCell(self.encoder_output_size, args.hidden_size)
         for name, param in self.lstm.named_parameters():
             if 'bias' in name:
                 nn.init.constant_(param, 0)
-        #self.fc = nn.Linear(args.hidden_size, act_dim)
+
         self.fc = nn.Sequential(
             layer_init(nn.Linear(args.hidden_size, 128)),
             nn.Tanh(),
@@ -30,18 +56,18 @@ class Actor(nn.Module):
         self.args = args
     
     def forward(self,
-                x: Float[Tensor, "batch obs_dim"],
+                x: Float[Tensor, "batch *obs_dim"],
                 hidden: Tuple[Float[Tensor, "batch hidden_size"], Float[Tensor, "batch hidden_size"]]
                 ) -> Tuple[Float[Tensor, "batch act_dim"], 
                           Tuple[Float[Tensor, "batch hidden_size"], Float[Tensor, "batch hidden_size"]]]:
-        #lst expects (batch, seq, features) but here seq = 1
+        x = self.encode(x)
         hidden = self.lstm(x, (hidden[0], hidden[1]))
         hidden = torch.stack(hidden)
         y = self.fc(hidden[0])
         return y, hidden
     
     def get_action(self,
-                   x: Float[Tensor, "batch obs_dim"],
+                   x: Float[Tensor, "batch *obs_dim"],
                    hidden: Tuple[Float[Tensor, "batch hidden_size"], Float[Tensor, "batch hidden_size"]]
                    ) -> Tuple[Float[Tensor, "batch"],
                             Float[Tensor, "batch"],
@@ -53,7 +79,7 @@ class Actor(nn.Module):
         return act, log_prob, hidden
     
     def get_action_logprob_and_entropy(self, 
-                           obs: Float[Tensor, "batch obs_dim"],
+                           obs: Float[Tensor, "batch *obs_dim"],
                            act: Float[Tensor, "batch act_dim"],
                            hidden: Tuple[Float[Tensor, "batch hidden_size"], Float[Tensor, "batch hidden_size"]]
                            ) -> Tuple[Float[Tensor, "batch"],
@@ -66,11 +92,15 @@ class Actor(nn.Module):
         return log_prob, entropy, hidden
 
 
-class Critic(nn.Module):
-    def __init__(self, obs_dim: Int, args: Args):
-        super(Critic, self).__init__()
-        self.lstm = nn.LSTMCell(obs_dim, args.hidden_size)
-        #self.fc = nn.Linear(args.hidden_size, 1)
+class Critic(BaseEncoder):
+    def __init__(self, obs_dim: Tuple[int, ...], args: Args):
+        super().__init__(obs_dim)
+        
+        self.lstm = nn.LSTMCell(self.encoder_output_size, args.hidden_size)
+        for name, param in self.lstm.named_parameters():
+            if 'bias' in name:
+                nn.init.constant_(param, 0)
+                
         self.fc = nn.Sequential(
             layer_init(nn.Linear(args.hidden_size, 128)),
             nn.Tanh(),
@@ -80,10 +110,11 @@ class Critic(nn.Module):
         )
     
     def forward(self,
-                x: Float[Tensor, "batch obs_dim"],
+                x: Float[Tensor, "batch *obs_dim"],  # Changed to handle variable obs dimensions
                 hidden: Tuple[Float[Tensor, "batch hidden_size"], Float[Tensor, "batch hidden_size"]] # or single tensor of shape (2 batch hidden_size)
                 ) -> Tuple[Float[Tensor, "batch"],
                           Float[Tensor, "2 batch hidden_size"]]:
+        x = self.encode(x)
         hidden = self.lstm(x, (hidden[0], hidden[1]))
         hidden = torch.stack(hidden)
         y = self.fc(hidden[0]).squeeze(-1)                                                                                                                                                                                                                      
