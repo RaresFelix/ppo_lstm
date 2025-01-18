@@ -158,12 +158,8 @@ class Agent():
         pred_values = torch.zeros_like(returns)
 
         critic_hidden = einops.rearrange(critic_hidden, 'batch c2 hidden -> c2 batch hidden', c2 = 2)
-        for step in range(self.args.seq_len):
-            obs_tensor = observations[:, step]
-            current_value, critic_hidden = self.critic(obs_tensor, critic_hidden)
-            critic_hidden = critic_hidden * (1 - dones[:, step].unsqueeze(0).unsqueeze(-1))
-            pred_values[:, step] = current_value
-        
+        pred_values, next_hidden = self.critic.get_seq_value(observations, dones, critic_hidden)
+     
         VF_deltas = (pred_values - returns) * (1 - dones)
         VF_loss = VF_deltas.pow(2).sum() / ((1 - dones).sum() + 1e-5)
 
@@ -180,26 +176,10 @@ class Agent():
             advantages: shape (batch, seq_len)
             actor_hidden: shape (2, batch, hidden_size)
         """
-        log_probs = torch.zeros_like(advantages)
-        entropy = torch.zeros_like(advantages)
-    
         # Reshape actor hidden to (2, batch, hidden_size)
         actor_hidden = einops.rearrange(actor_hidden, 'batch c2 hidden -> c2 batch hidden', c2=2)
-        
-        # Process sequence step by step
-        for step in range(self.args.seq_len):
-            obs_tensor = observations[:, step]
-            act_tensor = actions[:, step]
-            
-            step_log_probs, step_entropy, actor_hidden = self.actor.get_action_logprob_and_entropy(
-                obs_tensor, act_tensor, actor_hidden
-            )
-            
-            # Reset hidden state for done episodes
-            actor_hidden = actor_hidden * (1 - dones[:, step].unsqueeze(0).unsqueeze(-1))
-            
-            log_probs[:, step] = step_log_probs
-            entropy[:, step] = step_entropy
+
+        log_probs, entropy, next_actor_hidden = self.actor.get_seq_action_logprob_and_entropy(observations, dones, actions, actor_hidden)
         
         log_ratio = log_probs - prev_logprob
         ratio = torch.exp(log_ratio)

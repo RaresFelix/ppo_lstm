@@ -90,12 +90,36 @@ class Actor(BaseEncoder):
         log_prob = dist.log_prob(act)
         entropy = dist.entropy()
         return log_prob, entropy, hidden
-
+    
+    def get_seq_action_logprob_and_entropy(self,
+                            obs : Float[Tensor, "batch seq_len *obs_dim"],
+                            dones: Float[Tensor, "batch seq_len"],
+                            act : Float[Tensor, "batch seq_len act_dim"],
+                            hidden: Tuple[Float[Tensor, "batch hidden_size"], Float[Tensor, "batch hidden_size"]]
+                            ) -> Tuple[Float[Tensor, "batch seq_len"],
+                                     Float[Tensor, "batch seq_len"],
+                                     Tuple[Float[Tensor, "batch hidden_size"], Float[Tensor, "batch hidden_size"]]]:
+        batch_size, seq_len, _ = obs.shape
+        obs = self.encode(obs)
+        
+        # place to save hidden states for later fc
+        all_hidden = torch.zeros((2, batch_size, seq_len, self.args.hidden_size), device=obs.device)
+        for i in range(seq_len):
+            hidden = self.lstm(obs[:, i], (hidden[0], hidden[1]))
+            hidden = torch.stack(hidden)
+            hidden *= (1 - dones[:, i].unsqueeze(0).unsqueeze(-1))
+            all_hidden[:, :, i] = hidden
+        y = self.fc(all_hidden[0]) # batch_size, seq_len, act_dim
+        dist = torch.distributions.Categorical(logits=y)
+        log_prob = dist.log_prob(act)
+        entropy = dist.entropy()
+        return log_prob, entropy, hidden
 
 class Critic(BaseEncoder):
     def __init__(self, obs_dim: Tuple[int, ...], args: Args):
         super().__init__(obs_dim)
         
+        self.args = args
         self.lstm = nn.LSTMCell(self.encoder_output_size, args.hidden_size)
         for name, param in self.lstm.named_parameters():
             if 'bias' in name:
@@ -118,4 +142,23 @@ class Critic(BaseEncoder):
         hidden = self.lstm(x, (hidden[0], hidden[1]))
         hidden = torch.stack(hidden)
         y = self.fc(hidden[0]).squeeze(-1)                                                                                                                                                                                                                      
+        return y, hidden
+    
+    def get_seq_value(self,
+                      obs: Float[Tensor, "batch seq_len *obs_dim"],
+                      dones: Float[Tensor, "batch seq_len"],
+                      hidden: Tuple[Float[Tensor, "batch hidden_size"], Float[Tensor, "batch hidden_size"]]
+                      ) -> Tuple[Float[Tensor, "batch seq_len"],
+                                Tuple[Float[Tensor, "batch hidden_size"], Float[Tensor, "batch hidden_size"]]]:
+        batch_size, seq_len, _ = obs.shape
+        obs = self.encode(obs)
+        
+        # place to save hidden states for later fc
+        all_hidden = torch.zeros((2, batch_size, seq_len, self.args.hidden_size), device=obs.device)
+        for i in range(seq_len):
+            hidden = self.lstm(obs[:, i], (hidden[0], hidden[1]))
+            hidden = torch.stack(hidden)
+            hidden *= (1 - dones[:, i].unsqueeze(0).unsqueeze(-1))
+            all_hidden[:, :, i] = hidden
+        y = self.fc(all_hidden[0]).squeeze(-1)
         return y, hidden
