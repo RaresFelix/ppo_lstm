@@ -21,7 +21,7 @@ class Agent():
             device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
             self.device = device
 
-        self.obs_dim = np.prod(envs.single_observation_space.shape)
+        self.obs_dim = envs.single_observation_space.shape
         self.act_dim = envs.single_action_space.n
         
         self.actor = Actor(self.obs_dim, self.act_dim, args).to(device)
@@ -53,6 +53,8 @@ class Agent():
     
     def _run_debug_probes(self):
         """Run debug value probes for critic network visualization"""
+        if not self.writer:
+            return
         with torch.no_grad():
             for obs_v in np.linspace(-1., 1., 5):
                 obs_v_tens = torch.tensor(obs_v, dtype=torch.float32, device=self.device).unsqueeze(0)
@@ -256,9 +258,6 @@ class Agent():
 
                     total_actor_loss = actor_loss - self.args.entropy_coef * entropy 
                     
-                    if approx_kl > self.args.max_kl:
-                        early_stop = True
-                        break
                     
                     self.actor_optimizer.zero_grad()
                     total_actor_loss.backward()
@@ -269,5 +268,11 @@ class Agent():
                     VF_loss.backward()
                     torch.nn.utils.clip_grad_norm_(self.critic.parameters(), self.args.max_grad_norm)
                     self.critic_optimizer.step()
+
+                    if approx_kl > self.args.max_kl:
+                        early_stop = True
+                        break
             train_time = time.time() - time0
             print(f'Rollout time: {rollout_time:.2f}s, Train time: {train_time:.2f}s')
+        if self.args.debug_probes:
+            self._run_debug_probes()
