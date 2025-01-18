@@ -26,6 +26,9 @@ class Agent():
         
         self.actor = Actor(self.obs_dim, self.act_dim, args).to(device)
         self.critic = Critic(self.obs_dim, args).to(device)
+
+        self.actor = torch.compile(self.actor)
+        self.critic = torch.compile(self.critic)
     
 
         self.actor_optimizer = optim.Adam(self.actor.parameters(), lr=args.learning_rate)
@@ -269,9 +272,9 @@ class Agent():
                     torch.nn.utils.clip_grad_norm_(self.critic.parameters(), self.args.max_grad_norm)
                     self.critic_optimizer.step()
 
-                    if approx_kl > self.args.max_kl:
-                        early_stop = True
-                        break
+                   # if approx_kl > self.args.max_kl:
+                   #     early_stop = True
+                   #     break
             train_time = time.time() - time0
             print(f'Rollout time: {rollout_time:.2f}s, Train time: {train_time:.2f}s')
         if self.args.debug_probes:
