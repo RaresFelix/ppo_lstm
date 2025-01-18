@@ -2,7 +2,7 @@ import torch
 from jaxtyping import Int, Float
 import einops
 from torch import Tensor
-from typing import List
+from typing import List, Tuple
 from .config import Args
 
 def compute_gae(args: Args,
@@ -78,20 +78,20 @@ def reshape_sequence_data(tensor: Tensor, sequence_length: int, is_lstm_hidden: 
         )
 
 class RolloutBuffer():
-    def __init__(self, obs_dim: Int, args: Args, device = None):
+    def __init__(self, obs_dim: Tuple[int, ...], args: Args, device = None):
         if device is None:
             device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.device = device
         self.args = args
 
-        self.observations = torch.zeros((args.buffer_size, args.num_envs, obs_dim), dtype=torch.float32, device=device)
+        self.observations = torch.zeros((args.buffer_size, args.num_envs, *obs_dim), dtype=torch.float32, device=device)
         self.dones = torch.zeros((args.buffer_size, args.num_envs,), dtype=torch.float32, device=device)
         self.actions = torch.zeros((args.buffer_size, args.num_envs,), dtype=torch.float32, device=device)
         self.values = torch.zeros((args.buffer_size, args.num_envs,), dtype=torch.float32, device=device)
         self.advantages = torch.zeros((args.buffer_size, args.num_envs,), dtype=torch.float32, device=device)
         self.log_prob = torch.zeros((args.buffer_size, args.num_envs,), dtype=torch.float32, device=device)
 
-        self.next_obs = torch.zeros((args.buffer_size, args.num_envs, obs_dim), dtype=torch.float32, device=device)
+        self.next_obs = torch.zeros((args.buffer_size, args.num_envs, *obs_dim), dtype=torch.float32, device=device)
         self.next_dones = torch.zeros((args.buffer_size, args.num_envs,), dtype=torch.float32, device=device)
         self.rewards = torch.zeros((args.buffer_size, args.num_envs,), dtype=torch.float32, device=device)
 
@@ -102,12 +102,12 @@ class RolloutBuffer():
         self.full = False
     
     def add(self, 
-            obs: Float[Tensor, "num_envs obs_dim"],
+            obs: Float[Tensor, "num_envs *obs_dim"],
             done: Float[Tensor, "num_envs"],
             act: Float[Tensor, "num_envs"],
             log_prob: Float[Tensor, "num_envs"],
             val: Float[Tensor, "num_envs"],
-            next_obs: Float[Tensor, "num_envs obs_dim"],
+            next_obs: Float[Tensor, "num_envs *obs_dim"],
             next_done: Float[Tensor, "num_envs"],
             rew: Float[Tensor, "num_envs"],
             actor_hidden: Float[Tensor, "2 num_envs hidden_size"],
@@ -196,5 +196,7 @@ class RolloutBuffer():
                 reshape_sequence_data(tensor, self.args.seq_len, is_lstm_hidden=True)
                 for tensor in lstm_tensors
             ]
+
+            self.reset()
                 
             return result
