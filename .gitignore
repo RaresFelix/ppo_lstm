@@ -4,3 +4,5 @@ old_runs
 src/__pycache__
 .vscode
 videos/
+checkpoints/
+.pytest_cache/

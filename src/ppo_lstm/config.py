@@ -3,16 +3,16 @@ from dataclasses import dataclass
 @dataclass
 class Args:
     project_name: str = 'ppo_lstm'
-    env_id: str = 'MiniGrid-MemoryS7-v0'
+    env_id: str = 'MiniGrid-MemoryS9_3x3-v0'
     torch_deterministic: bool = True
-    total_steps: int = int(1e7) 
+    total_steps: int = int(5e7) 
     seed: int = 0
-    num_steps: int = 64
+    num_steps: int = 128
     num_envs: int = 128
     seq_len: int = 8 # sequence length for LSTM; We cut up num_steps into pieces of seq_len
     record_video: bool = False
 
-    minibatch_size: int = 1024
+    minibatch_size: int = 2048
     buffer_size: int = int(512) 
     debug_probes: bool = False
 
@@ -21,7 +21,7 @@ class Args:
     num_iterations: int = 0
     num_minibatches: int = 0
 
-    update_epochs: int = 32
+    update_epochs: int = 64
     gamma: float = 0.99
     gae_lambda: float = 0.95
 
@@ -29,13 +29,15 @@ class Args:
     vf_coef: float = 0.5
     entropy_coef: float = 0.001
     max_grad_norm: float = 0.5
-    learning_rate: float = 2e-4
+    learning_rate: float = 5e-4
     eps_max: float = 1e-3
     eps_min: float = 1e-5
     max_kl: float = 0.02
 
     hidden_size: int = 256
     hidden_layer_size: int = 512  # Add this new parameter
+    save_freq: int = int(1048576)  # Save model every N steps
+    save_dir: str = "checkpoints"  # Base directory for model checkpoints
 
     def __post_init__(self):
         self.n_epochs = self.total_steps // (self.num_steps * self.num_envs)

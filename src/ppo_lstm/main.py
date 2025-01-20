@@ -31,7 +31,7 @@ def make_env(env_id: str, idx: Int, run_name: str, record_video: bool = False) -
                 from ..enviroments.minigrid_memory import MiniGridMemoryBasicEnv
                 env = MiniGridMemoryBasicEnv(
                     render_mode='rgb_array',
-                    agent_view_size=7,
+                    agent_view_size=3,
                     record_video=record_video and idx == 0,
                     run_name=run_name
                 )
@@ -68,7 +68,7 @@ def main() -> None:
     np.random.seed(args.seed)
     torch.manual_seed(args.seed)
     torch.backends.cudnn.deterministic = args.torch_deterministic
-    agent = Agent(args, envs, writer)
+    agent = Agent(args, envs, run_name, writer)
     agent.train()
 
 if __name__ == '__main__':

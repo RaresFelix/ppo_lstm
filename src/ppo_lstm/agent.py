@@ -12,11 +12,14 @@ from typing import Optional
 from .config import Args
 from .networks import Actor, Critic
 from .buffer import RolloutBuffer
+import os
+from pathlib import Path
 
 class Agent():
-    def __init__(self, args: Args, envs, writer: Optional[SummaryWriter] = None, device = None):
+    def __init__(self, args: Args, envs, run_name: str, writer: Optional[SummaryWriter] = None, device = None):
         self.args = args
         self.writer = writer
+        self.run_name = run_name
         if not device:
             device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
             self.device = device
@@ -37,6 +40,8 @@ class Agent():
         self.envs = envs
 
         self.buffer = RolloutBuffer(self.obs_dim, args)
+        self.checkpoint_dir = Path(args.save_dir) / self.run_name
+        os.makedirs(self.checkpoint_dir, exist_ok=True)
     
     def _log_episode_stats(self, infos):
         """Log episode statistics to tensorboard.
@@ -200,6 +205,26 @@ class Agent():
 
         return actor_loss, entropy_mean, approx_kl, fraction_clipped
 
+    def save(self, step: int) -> None:
+        """Save model checkpoint"""
+        save_path = self.checkpoint_dir / f"checkpoint_{step}.pt"
+        torch.save({
+            'step': step,
+            'actor_state_dict': self.actor.state_dict(),
+            'critic_state_dict': self.critic.state_dict(),
+            'actor_optimizer_state_dict': self.actor_optimizer.state_dict(),
+            'critic_optimizer_state_dict': self.critic_optimizer.state_dict(),
+        }, save_path)
+    
+    def load(self, path: str) -> int:
+        """Load model checkpoint and return the step number"""
+        checkpoint = torch.load(path)
+        self.actor.load_state_dict(checkpoint['actor_state_dict'])
+        self.critic.load_state_dict(checkpoint['critic_state_dict'])
+        self.actor_optimizer.load_state_dict(checkpoint['actor_optimizer_state_dict'])
+        self.critic_optimizer.load_state_dict(checkpoint['critic_optimizer_state_dict'])
+        return checkpoint['step']
+
     def train(self) -> None:
         progress_bar = tqdm(range(self.args.total_steps))
         self.step = 0
@@ -257,5 +282,7 @@ class Agent():
                    #     break
             train_time = time.time() - time0
             print(f'Rollout time: {rollout_time:.2f}s, Train time: {train_time:.2f}s')
+            if self.step % self.args.save_freq == 0:
+                self.save(self.step)
         if self.args.debug_probes:
             self._run_debug_probes()

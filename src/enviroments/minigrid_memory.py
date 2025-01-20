@@ -47,10 +47,10 @@ class MinigridMemoryEnv(gym.Env):
         return self._env.close()
 
 class MiniGridMemoryBasicEnv(gym.Env):
-    def __init__(self, render_mode='rgb_array', agent_view_size=7, record_video=False, run_name=None):
+    def __init__(self, render_mode='rgb_array', agent_view_size=3, record_video=False, run_name=None):
         super().__init__()
         
-        self._env = gym.make("MiniGrid-MemoryS7-v0", agent_view_size=agent_view_size, render_mode=render_mode)
+        self._env = gym.make("MiniGrid-MemoryS9-v0", agent_view_size=agent_view_size, render_mode=render_mode)
         # self._env = minigrid.wrappers.FullyObsWrapper(self._env)
         self._env = gym.wrappers.FilterObservation(self._env, ['image', 'direction'])
         self._env = gym.wrappers.FlattenObservation(self._env)

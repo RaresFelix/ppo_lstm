@@ -10,6 +10,7 @@ jaxtyping
 tqdm
 tyro
 minigrid
+moviepy
 tensorboard
 gymnasium[other]
 flask
