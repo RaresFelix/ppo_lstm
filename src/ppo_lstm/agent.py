@@ -15,6 +15,7 @@ from .networks import LSTMFeatureExtractor, ActorHead, CriticHead  # Update impo
 from .buffer import RolloutBuffer
 import os
 from pathlib import Path
+import wandb  # Add this import
 
 class Agent():
     def __init__(self, args: Args, envs, run_name: str, writer: Optional[SummaryWriter] = None, device = None):
@@ -63,6 +64,13 @@ class Agent():
         self.writer.add_scalar('episode/return', avg_returns, self.step)
         self.writer.add_scalar('episode/length', avg_lengths, self.step)
         self.writer.add_scalar('episode/terminals', number_terminals, self.step)
+
+        if self.args.use_wandb:
+            wandb.log({
+                'episode/return': avg_returns,
+                'episode/length': avg_lengths,
+                'episode/terminals': number_terminals
+            }, step=self.step)
     
     def _run_debug_probes(self):
         """Run debug value probes for critic network visualization"""
@@ -150,14 +158,24 @@ class Agent():
         if not self.writer:
             return
             
-        self.writer.add_scalar('training/approx_kl', approx_kl, self.step)
-        self.writer.add_scalar('training/clip_fraction', fraction_clipped, self.step)
-        self.writer.add_scalar('training/entropy', entropy, self.step)
-        self.writer.add_scalar('training/actor_loss', actor_loss, self.step)
-        self.writer.add_scalar('training/critic_loss', VF_loss, self.step)
-        self.writer.add_scalar('training/total_loss', actor_loss + VF_loss, self.step)
-        self.writer.add_scalar('training/advantages', advantages.mean(), self.step)
-        self.writer.add_scalar('training/values', values.mean(), self.step)
+        stats = {
+            'training/approx_kl': approx_kl,
+            'training/clip_fraction': fraction_clipped,
+            'training/entropy': entropy,
+            'training/actor_loss': actor_loss,
+            'training/critic_loss': VF_loss,
+            'training/total_loss': actor_loss + VF_loss,
+            'training/advantages': advantages.mean(),
+            'training/values': values.mean()
+        }
+
+        # Log to tensorboard
+        for key, value in stats.items():
+            self.writer.add_scalar(key, value, self.step)
+
+        # Log to wandb
+        if self.args.use_wandb:
+            wandb.log(stats, step=self.step)
 
     def _get_critic_loss(self, features: Float[Tensor, "batch seq_len hidden_size"], 
                         dones: Float[Tensor, "batch seq_len"], 

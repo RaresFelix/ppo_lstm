@@ -4,18 +4,21 @@ from dataclasses import dataclass
 class Args:
     # Project and Environment Configuration
     project_name: str = 'ppo_lstm'
-    wandb_project: str = 'ppo_lstm'
-    env_id: str = 'MiniGrid-MemoryS7-v0'
+    env_id: str = 'MiniGrid-MemoryS9-v0'
     view_size: int = 3  # 0 for full observation
     one_hot: bool = True  # use one-hot encoding for partial observation
     use_pixels: bool = False  # will make env output pixels & use CNNs
     torch_deterministic: bool = True
     seed: int = 0
 
+    use_wandb: bool = False
+    wandb_project: str = 'ppo_lstm'
+    wandb_group: str = ''
+
     # Core Training Parameters
     total_steps: int = int(5e7)
-    num_envs: int = 128
-    num_steps: int = 128
+    num_envs: int = 64
+    num_steps: int = 256
     seq_len: int = 8  # sequence length for LSTM
     update_epochs: int = 64
 
@@ -29,7 +32,7 @@ class Args:
     max_grad_norm: float = 0.5
 
     # PPO Specific Parameters
-    clip_range: float = 0.05
+    clip_range: float = 0.2
     max_kl: float = 0.02
     gamma: float = 0.99
     gae_lambda: float = 0.95
@@ -51,6 +54,8 @@ class Args:
     batch_size: int = 0
     num_iterations: int = 0
     num_minibatches: int = 0
+
+    gpu_id: int = 0
 
     def __post_init__(self):
         self.n_epochs = self.total_steps // (self.num_steps * self.num_envs)

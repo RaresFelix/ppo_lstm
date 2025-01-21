@@ -1,6 +1,8 @@
 import random
 import time
 from typing import Callable
+import wandb  # Add this import
+import tyro
 
 import gymnasium as gym
 import numpy as np
@@ -51,8 +53,28 @@ def make_env(args: Args, idx: Int, run_name: str, record_video: bool = False) ->
 
 def main() -> None:
     torch.set_float32_matmul_precision('high')
-    args = Args(record_video=True)
+    args = tyro.cli(Args)
+    
+    # Add these lines to set CUDA device
+    if torch.cuda.is_available():
+        torch.cuda.set_device(args.gpu_id)
+    
     run_name = f'{args.project_name}_{args.env_id}_{args.view_size}x{args.view_size}_{int(time.time())}'
+    
+    if args.use_wandb:
+        if args.wandb_group:
+            wandb.init(
+                project=args.wandb_project,
+                group=args.wandb_group,
+                name=run_name,
+                config=vars(args),
+            )
+        else:
+            wandb.init(
+                project=args.wandb_project,
+                name=run_name,
+                config=vars(args),
+            )
     
     writer = SummaryWriter('runs/' + run_name)
     writer.add_text(
@@ -71,7 +93,13 @@ def main() -> None:
     )
     
     agent = Agent(args, envs, run_name, writer)
-    agent.train()
+    
+    try:
+        agent.train()
+    finally:
+        if args.use_wandb:
+            wandb.finish()
+        writer.close()
 
 if __name__ == '__main__':
     main()

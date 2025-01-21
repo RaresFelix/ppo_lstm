@@ -6,3 +6,5 @@ src/__pycache__
 videos/
 checkpoints/
 .pytest_cache/
+wandb/
+configs/
