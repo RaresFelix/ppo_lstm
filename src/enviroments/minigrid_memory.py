@@ -4,11 +4,11 @@ import numpy as np
 from gymnasium import spaces
 
 class MinigridMemoryEnv(gym.Env):
-    def __init__(self, render_mode='rgb_array', agent_view_size=7, record_video=False, run_name=None):
+    def __init__(self, env_id: str, render_mode='rgb_array', agent_view_size=3, record_video=False, run_name=None):
         super().__init__()
         
         # Create and wrap the environment
-        self._env = gym.make("MiniGrid-MemoryS7-v0", agent_view_size=agent_view_size, render_mode=render_mode)
+        self._env = gym.make(env_id, agent_view_size=agent_view_size, render_mode=render_mode)
         self._env = minigrid.wrappers.RGBImgPartialObsWrapper(self._env, tile_size=28)
         self._env = minigrid.wrappers.ImgObsWrapper(self._env)
         
@@ -28,7 +28,7 @@ class MinigridMemoryEnv(gym.Env):
         self.action_space = spaces.Discrete(3)
         
     def _transform_observation(self, obs):
-        return np.swapaxes(np.swapaxes(obs, 0, 2), 2, 1)
+        return np.transpose(obs, (2, 0, 1))
     
     def step(self, action):
         obs, reward, terminated, truncated, info = self._env.step(action)
@@ -47,11 +47,19 @@ class MinigridMemoryEnv(gym.Env):
         return self._env.close()
 
 class MiniGridMemoryBasicEnv(gym.Env):
-    def __init__(self, render_mode='rgb_array', agent_view_size=3, record_video=False, run_name=None):
+    def __init__(self, env_id: str, use_one_hot: bool, render_mode='rgb_array', agent_view_size=3, record_video=False, run_name=None):
         super().__init__()
         
-        self._env = gym.make("MiniGrid-MemoryS9-v0", agent_view_size=agent_view_size, render_mode=render_mode)
-        # self._env = minigrid.wrappers.FullyObsWrapper(self._env)
+        full_obs = False
+        if agent_view_size == 0:
+            full_obs = True
+            agent_view_size = 7
+
+        self._env = gym.make(env_id, agent_view_size=agent_view_size, render_mode=render_mode)
+        if full_obs:
+            self._env = minigrid.wrappers.FullyObsWrapper(self._env)
+        if use_one_hot:
+            self._env = minigrid.wrappers.OneHotPartialObsWrapper(self._env)
         self._env = gym.wrappers.FilterObservation(self._env, ['image', 'direction'])
         self._env = gym.wrappers.FlattenObservation(self._env)
         

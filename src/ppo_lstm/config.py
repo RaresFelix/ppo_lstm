@@ -3,8 +3,11 @@ from dataclasses import dataclass
 @dataclass
 class Args:
     project_name: str = 'ppo_lstm'
-    env_id: str = 'MiniGrid-MemoryS7_5x5-v0'
+    env_id: str = 'MiniGrid-MemoryS7-v0'
+    view_size: int = 3 # 0 for full observation
     torch_deterministic: bool = True
+    one_hot: bool = True # use one-hot encoding for partial observation
+
     total_steps: int = int(5e7) 
     seed: int = 0
     num_steps: int = 128
