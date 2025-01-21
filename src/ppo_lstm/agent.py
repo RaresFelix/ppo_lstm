@@ -48,6 +48,9 @@ class Agent():
         self.buffer = RolloutBuffer(self.obs_dim, args)
         self.checkpoint_dir = Path(args.save_dir) / self.run_name
         os.makedirs(self.checkpoint_dir, exist_ok=True)
+        
+        # Add EMA tracking
+        self.ema_return = None
     
     def _log_episode_stats(self, infos):
         """Log episode statistics to tensorboard.
@@ -61,16 +64,27 @@ class Agent():
         avg_lengths = infos['episode']['l'].sum() / infos['_episode'].sum()
         number_terminals = infos['_episode'].sum()
 
-        self.writer.add_scalar('episode/return', avg_returns, self.step)
-        self.writer.add_scalar('episode/length', avg_lengths, self.step)
-        self.writer.add_scalar('episode/terminals', number_terminals, self.step)
+        # Update EMA return
+        if self.ema_return is None:
+            self.ema_return = avg_returns
+        else:
+            self.ema_return = self.args.ema_decay * self.ema_return + (1 - self.args.ema_decay) * avg_returns
 
+        # Log both raw and EMA returns along with other stats
+        stats = {
+            'episode/return': avg_returns,
+            'episode/return_ema': self.ema_return,
+            'episode/length': avg_lengths,
+            'episode/terminals': number_terminals
+        }
+
+        # Log to tensorboard
+        for key, value in stats.items():
+            self.writer.add_scalar(key, value, self.step)
+
+        # Log to wandb
         if self.args.use_wandb:
-            wandb.log({
-                'episode/return': avg_returns,
-                'episode/length': avg_lengths,
-                'episode/terminals': number_terminals
-            }, step=self.step)
+            wandb.log(stats, step=self.step)
     
     def _run_debug_probes(self):
         """Run debug value probes for critic network visualization"""
