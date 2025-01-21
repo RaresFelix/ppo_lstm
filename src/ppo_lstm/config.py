@@ -2,46 +2,55 @@ from dataclasses import dataclass
 
 @dataclass
 class Args:
+    # Project and Environment Configuration
     project_name: str = 'ppo_lstm'
+    wandb_project: str = 'ppo_lstm'
     env_id: str = 'MiniGrid-MemoryS7-v0'
-    view_size: int = 3 # 0 for full observation
+    view_size: int = 3  # 0 for full observation
+    one_hot: bool = True  # use one-hot encoding for partial observation
+    use_pixels: bool = False  # will make env output pixels & use CNNs
     torch_deterministic: bool = True
-    one_hot: bool = True # use one-hot encoding for partial observation
-
-    total_steps: int = int(5e7) 
     seed: int = 0
-    num_steps: int = 128
-    betas: tuple = (0.9, 0.999)
+
+    # Core Training Parameters
+    total_steps: int = int(5e7)
     num_envs: int = 128
-    seq_len: int = 8 # sequence length for LSTM; We cut up num_steps into pieces of seq_len
-    record_video: bool = False
+    num_steps: int = 128
+    seq_len: int = 8  # sequence length for LSTM
+    update_epochs: int = 64
 
+    # Network Architecture
+    hidden_size: int = 256
+    hidden_layer_size: int = 512
+
+    # Optimization Parameters
+    learning_rate: float = 5e-4
+    betas: tuple = (0.9, 0.999)
+    max_grad_norm: float = 0.5
+
+    # PPO Specific Parameters
+    clip_range: float = 0.05
+    max_kl: float = 0.02
+    gamma: float = 0.99
+    gae_lambda: float = 0.95
+    vf_coef: float = 0.5
+    entropy_coef: float = 0.01
+
+    # Buffer and Batch Settings
+    buffer_size: int = int(512)
     minibatch_size: int = 2048
-    buffer_size: int = int(512) 
-    debug_probes: bool = False
 
-    n_epochs: int = 0 # will be calculated
+    # Logging and Saving
+    debug_probes: bool = False
+    record_video: bool = False
+    save_freq: int = int(1048576)
+    save_dir: str = "checkpoints"
+
+    # Derived Parameters (calculated in post_init)
+    n_epochs: int = 0
     batch_size: int = 0
     num_iterations: int = 0
     num_minibatches: int = 0
-
-    update_epochs: int = 64
-    gamma: float = 0.99
-    gae_lambda: float = 0.95
-
-    clip_range: float = 0.05
-    vf_coef: float = 0.5
-    entropy_coef: float = 0.01
-    max_grad_norm: float = 0.5
-    learning_rate: float = 5e-4
-    eps_max: float = 1e-3
-    eps_min: float = 1e-5
-    max_kl: float = 0.02
-
-    hidden_size: int = 256
-    hidden_layer_size: int = 512  # Add this new parameter
-    save_freq: int = int(1048576)  # Save model every N steps
-    save_dir: str = "checkpoints"  # Base directory for model checkpoints
 
     def __post_init__(self):
         self.n_epochs = self.total_steps // (self.num_steps * self.num_envs)
