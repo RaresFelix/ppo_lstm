@@ -18,24 +18,23 @@ def train_agent(env_id, total_timesteps, seed = 1, gamma = .2):
         env_id=env_id,
         total_steps=total_timesteps,
         seed=seed,
-        num_envs=4,
-        num_steps=8, 
+        num_envs=1,
+        num_steps=16, 
         seq_len=2,
         update_epochs=8,
         minibatch_size=4,
-
         gamma=gamma,
         gae_lambda=.95,
         clip_range=0.2,
         vf_coef=0.5,
         learning_rate=1e-3,
-        entropy_coef=0.01,
+        entropy_coef=0.,
         max_grad_norm=0.5,
-        hidden_size=4,
+        hidden_size=8,
         debug_probes=True,
     )
     envs = gym.vector.SyncVectorEnv([make_env(env_id, idx, run_name) for idx in range(args.num_envs)])
-    agent = Agent(args, envs, writer)
+    agent = Agent(args, envs, run_name, writer)
     agent.train()
     return agent
 
@@ -43,8 +42,9 @@ def get_value(agent, obs):
     """Helper function to get value"""
     with torch.no_grad():
         obs = torch.tensor(obs, dtype=torch.float32, device=agent.device)
-        value, hidden = agent.critic(obs, torch.zeros((2, agent.args.hidden_size,), device=agent.device))
-
+        hidden = torch.zeros(2, agent.args.hidden_size, device=agent.device)
+        features, _ = agent.feature_extractor.get_features(obs, hidden)
+        value = agent.critic_head(features)
     return value
 
 def test_probe1_learning(capsys):
@@ -52,7 +52,7 @@ def test_probe1_learning(capsys):
     gym.envs.registration.register(id='Probe1-v0', entry_point=Probe1)
 
     with capsys.disabled():
-        agent = train_agent('Probe1-v0', 200)
+        agent = train_agent('Probe1-v0', 400)
     
     obs = np.array([0.], dtype=np.float32)
     value = get_value(agent, obs)
@@ -125,11 +125,11 @@ def test_probe4_learning(capsys):
     obs_tensor = torch.tensor(obs, dtype=torch.float32, device=agent.device)
     
     with torch.no_grad():
-        hidden = torch.zeros((2, agent.args.hidden_size,), device=agent.device)
-        logits = agent.actor(obs_tensor, hidden)[0]
+        hidden = torch.zeros(2, agent.args.hidden_size, device=agent.device)
+        features, _ = agent.feature_extractor.get_features(obs_tensor, hidden)
+        logits = agent.actor_head(features)
         probs = F.softmax(logits, dim=-1)
-
-        values = agent.critic(obs_tensor, hidden)[0].squeeze().item()
+        values = agent.critic_head(features)
     
     tolerance = .05
     expected_value = 1.
@@ -151,19 +151,22 @@ def test_probe5_learning(capsys):
     pos_obs = np.array([1.], dtype=np.float32)
     neg_obs = np.array([-1.], dtype=np.float32)
     
-    hidden = torch.zeros((2, agent.args.hidden_size,), device=agent.device)
+    hidden = torch.zeros(2, agent.args.hidden_size, device=agent.device)
     obs_tensor_pos = torch.tensor(pos_obs, dtype=torch.float32, device=agent.device)
     obs_tensor_neg = torch.tensor(neg_obs, dtype=torch.float32, device=agent.device)
     
     with torch.no_grad():
-        logits_pos = agent.actor(obs_tensor_pos, hidden)[0]
-        logits_neg = agent.actor(obs_tensor_neg, hidden)[0]
+        features_pos, _ = agent.feature_extractor.get_features(obs_tensor_pos, hidden)
+        features_neg, _ = agent.feature_extractor.get_features(obs_tensor_neg, hidden)
+        
+        logits_pos = agent.actor_head(features_pos)
+        logits_neg = agent.actor_head(features_neg)
         
         probs_pos = F.softmax(logits_pos, dim=-1)
         probs_neg = F.softmax(logits_neg, dim=-1)
         
-        values_pos = agent.critic(obs_tensor_pos, hidden)[0].squeeze()
-        values_neg = agent.critic(obs_tensor_neg, hidden)[0].squeeze()
+        values_pos = agent.critic_head(features_pos)
+        values_neg = agent.critic_head(features_neg)
     
     value_tolerance = 0.1
     prob_tolerance = 0.8  # Minimum probability for correct action
