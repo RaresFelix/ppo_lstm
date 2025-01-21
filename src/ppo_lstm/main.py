@@ -22,7 +22,7 @@ def make_env(env_id: str, idx: Int, run_name: str, record_video: bool = False) -
                 from ..enviroments.minigrid_memory import MinigridMemoryEnv
                 env = MinigridMemoryEnv(
                     render_mode='rgb_array', 
-                    agent_view_size=7,
+                    agent_view_size=5,
                     record_video=record_video and idx == 0,
                     run_name=run_name
                 )
@@ -31,7 +31,7 @@ def make_env(env_id: str, idx: Int, run_name: str, record_video: bool = False) -
                 from ..enviroments.minigrid_memory import MiniGridMemoryBasicEnv
                 env = MiniGridMemoryBasicEnv(
                     render_mode='rgb_array',
-                    agent_view_size=3,
+                    agent_view_size=5,
                     record_video=record_video and idx == 0,
                     run_name=run_name
                 )

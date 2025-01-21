@@ -95,8 +95,7 @@ class RolloutBuffer():
         self.next_dones = torch.zeros((args.buffer_size, args.num_envs,), dtype=torch.float32, device=device)
         self.rewards = torch.zeros((args.buffer_size, args.num_envs,), dtype=torch.float32, device=device)
 
-        self.actor_hidden = torch.zeros((args.buffer_size, 2, args.num_envs, args.hidden_size), dtype=torch.float32, device=device)
-        self.critic_hidden = torch.zeros((args.buffer_size, 2, args.num_envs, args.hidden_size), dtype=torch.float32, device=device)
+        self.hidden = torch.zeros((args.buffer_size, 2, args.num_envs, args.hidden_size), dtype=torch.float32, device=device)
 
         self.idx = 0
         self.full = False
@@ -110,8 +109,7 @@ class RolloutBuffer():
             next_obs: Float[Tensor, "num_envs *obs_dim"],
             next_done: Float[Tensor, "num_envs"],
             rew: Float[Tensor, "num_envs"],
-            actor_hidden: Float[Tensor, "2 num_envs hidden_size"],
-            critic_hidden: Float[Tensor, "2 num_envs hidden_size"]) -> None:
+            hidden: Float[Tensor, "2 num_envs hidden_size"]) -> None:
         obs = torch.as_tensor(obs, dtype=torch.float32, device=self.device)
         done = torch.as_tensor(done, dtype=torch.float32, device=self.device)
         act = torch.as_tensor(act, dtype=torch.float32, device=self.device)
@@ -120,8 +118,7 @@ class RolloutBuffer():
         next_obs = torch.as_tensor(next_obs, dtype=torch.float32, device=self.device)
         next_done = torch.as_tensor(next_done, dtype=torch.float32, device=self.device)
         rew = torch.as_tensor(rew, dtype=torch.float32, device=self.device)
-        actor_hidden = torch.as_tensor(actor_hidden, dtype=torch.float32, device=self.device)
-        critic_hidden = torch.as_tensor(critic_hidden, dtype=torch.float32, device=self.device)
+        hidden = torch.as_tensor(hidden, dtype=torch.float32, device=self.device)
         
         self.observations[self.idx] = obs
         self.dones[self.idx] = done
@@ -132,8 +129,7 @@ class RolloutBuffer():
         self.next_obs[self.idx] = next_obs
         self.next_dones[self.idx] = next_done
         self.rewards[self.idx] = rew
-        self.actor_hidden[self.idx] = actor_hidden
-        self.critic_hidden[self.idx] = critic_hidden
+        self.hidden[self.idx] = hidden
 
         self.idx += 1
         if self.idx == self.args.buffer_size:
@@ -143,11 +139,10 @@ class RolloutBuffer():
     def add_last(self, 
                 next_done: Float[Tensor, "num_envs"],
                 next_value: Float[Tensor, "num_envs"],
-                last_critic_hidden: Float[Tensor, "2 num_envs hidden_size"]) -> None:
-        #this is for gae calculation
+                last_hidden: Float[Tensor, "2 num_envs hidden_size"]) -> None:
         self.last_done = torch.as_tensor(next_done, dtype=torch.float32, device=self.device) 
         self.last_value = torch.as_tensor(next_value, dtype=torch.float32, device=self.device)
-        self.last_critic_hidden = torch.as_tensor(last_critic_hidden, dtype=torch.float32, device=self.device)
+        self.last_hidden = torch.as_tensor(last_hidden, dtype=torch.float32, device=self.device)
     
     def reset(self):
         self.idx = 0
@@ -184,8 +179,7 @@ class RolloutBuffer():
             
             # LSTM hidden states
             lstm_tensors = [
-                self.actor_hidden[:self.idx],
-                self.critic_hidden[:self.idx]
+                self.hidden[:self.idx],  # Single hidden state repeated twice to maintain compatibility
             ]
             
             # Process regular tensors and LSTM hidden states separately

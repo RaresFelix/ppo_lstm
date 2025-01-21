@@ -3,11 +3,12 @@ from dataclasses import dataclass
 @dataclass
 class Args:
     project_name: str = 'ppo_lstm'
-    env_id: str = 'MiniGrid-MemoryS9_3x3-v0'
+    env_id: str = 'MiniGrid-MemoryS7_5x5-v0'
     torch_deterministic: bool = True
     total_steps: int = int(5e7) 
     seed: int = 0
     num_steps: int = 128
+    betas: tuple = (0.9, 0.999)
     num_envs: int = 128
     seq_len: int = 8 # sequence length for LSTM; We cut up num_steps into pieces of seq_len
     record_video: bool = False
@@ -27,7 +28,7 @@ class Args:
 
     clip_range: float = 0.05
     vf_coef: float = 0.5
-    entropy_coef: float = 0.001
+    entropy_coef: float = 0.01
     max_grad_norm: float = 0.5
     learning_rate: float = 5e-4
     eps_max: float = 1e-3
