@@ -98,6 +98,10 @@ class ActorHead(nn.Module):
         act = dist.sample()
         log_prob = dist.log_prob(act)
         return act, log_prob
+    
+    def get_log_prob(self, features: Float[Tensor, "batch hidden_size"], actions: Float[Tensor, "batch"]) -> Float[Tensor, "batch"]:
+        dist = self.get_action_dist(features)
+        return dist.log_prob(actions)
 
     def evaluate_actions(self, features: Float[Tensor, "*batch hidden_size"], actions: Float[Tensor, "*batch"]):
         dist = self.get_action_dist(features)

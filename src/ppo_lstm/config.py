@@ -11,9 +11,9 @@ class Args:
     torch_deterministic: bool = True
     seed: int = 0
 
-    use_wandb: bool = True
+    use_wandb: bool = True 
     wandb_project: str = 'ppo_lstm'
-    wandb_group: str = 'sweeps_3x3_S9_hidden8'
+    wandb_group: str = 'sweeps_3x3_S9_random'
 
     # Core Training Parameters
     total_steps: int = int(2e6)
@@ -22,12 +22,14 @@ class Args:
     seq_len: int = 8  # sequence length for LSTM
     update_epochs: int = 64
 
+    rand_move_eps: float = 5e-3# frequency of completely random moves
+
     # Network Architecture
     hidden_size: int = 8
-    hidden_layer_size: int = 512
+    hidden_layer_size: int = 64
 
     # Optimization Parameters
-    learning_rate: float = 5e-4
+    learning_rate: float = 2e-3
     betas: tuple = (0.9, 0.999)
     max_grad_norm: float = 0.5
 

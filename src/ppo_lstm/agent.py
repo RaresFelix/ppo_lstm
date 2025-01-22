@@ -11,11 +11,11 @@ from jaxtyping import Float
 from torch import Tensor
 from typing import Optional
 from .config import Args
-from .networks import LSTMFeatureExtractor, ActorHead, CriticHead  # Update imports
+from .networks import LSTMFeatureExtractor, ActorHead, CriticHead 
 from .buffer import RolloutBuffer
 import os
 from pathlib import Path
-import wandb  # Add this import
+import wandb  
 
 class Agent():
     def __init__(self, args: Args, envs, run_name: str, writer: Optional[SummaryWriter] = None, device = None):
@@ -29,7 +29,6 @@ class Agent():
         self.obs_dim = envs.single_observation_space.shape
         self.act_dim = envs.single_action_space.n
         
-        # Replace actor/critic with components
         self.feature_extractor = LSTMFeatureExtractor(self.obs_dim, args).to(device)
         self.actor_head = ActorHead(args.hidden_size, self.act_dim, args).to(device)
         self.critic_head = CriticHead(args.hidden_size, args).to(device)
@@ -38,7 +37,6 @@ class Agent():
         self.actor_head = torch.compile(self.actor_head)
         self.critic_head = torch.compile(self.critic_head)
 
-        # Update optimizers
         self.feature_optimizer = optim.AdamW(self.feature_extractor.parameters(), lr=args.learning_rate, betas=args.betas)
         self.actor_optimizer = optim.AdamW(self.actor_head.parameters(), lr=args.learning_rate, betas=args.betas)
         self.critic_optimizer = optim.AdamW(self.critic_head.parameters(), lr=args.learning_rate, betas=args.betas)
@@ -49,7 +47,6 @@ class Agent():
         self.checkpoint_dir = Path(args.save_dir) / self.run_name
         os.makedirs(self.checkpoint_dir, exist_ok=True)
         
-        # Add EMA tracking
         self.ema_return = None
     
     def _log_episode_stats(self, infos):
@@ -70,7 +67,6 @@ class Agent():
         else:
             self.ema_return = self.args.ema_decay * self.ema_return + (1 - self.args.ema_decay) * avg_returns
 
-        # Log both raw and EMA returns along with other stats
         stats = {
             'episode/return': avg_returns,
             'episode/return_ema': self.ema_return,
@@ -78,11 +74,9 @@ class Agent():
             'episode/terminals': number_terminals
         }
 
-        # Log to tensorboard
         for key, value in stats.items():
             self.writer.add_scalar(key, value, self.step)
 
-        # Log to wandb
         if self.args.use_wandb:
             wandb.log(stats, step=self.step)
     
@@ -122,7 +116,11 @@ class Agent():
 
             with torch.no_grad():
                 features, next_hidden = self.feature_extractor.get_features(obs_tensor, hidden)
-                action, log_prob = self.actor_head.get_action(features)
+                if random.random() < self.args.rand_move_eps:
+                    action = torch.randint(self.act_dim, (self.args.num_envs,), device=self.device)
+                    log_prob = self.actor_head.get_log_prob(features, action)
+                else:
+                    action, log_prob = self.actor_head.get_action(features)
                 value = self.critic_head(features)
 
             next_observation, reward, termination, truncation, infos = self.envs.step(action.cpu().numpy())
@@ -183,11 +181,9 @@ class Agent():
             'training/values': values.mean()
         }
 
-        # Log to tensorboard
         for key, value in stats.items():
             self.writer.add_scalar(key, value, self.step)
 
-        # Log to wandb
         if self.args.use_wandb:
             wandb.log(stats, step=self.step)
 
@@ -312,7 +308,6 @@ class Agent():
                     
                     total_loss.backward()
                     
-                    # Apply gradients to all components
                     torch.nn.utils.clip_grad_norm_(self.feature_extractor.parameters(), self.args.max_grad_norm)
                     torch.nn.utils.clip_grad_norm_(self.actor_head.parameters(), self.args.max_grad_norm)
                     torch.nn.utils.clip_grad_norm_(self.critic_head.parameters(), self.args.max_grad_norm)
