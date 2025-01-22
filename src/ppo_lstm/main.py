@@ -2,7 +2,7 @@ import sys
 import random
 import time
 from typing import Callable
-import wandb  # Add this import
+import wandb  
 import tyro
 
 import gymnasium as gym
@@ -57,7 +57,6 @@ def main() -> None:
     
     # Check if running as wandb sweep
     if any(arg.startswith('--sweep') for arg in sys.argv[1:]):
-        # We're in a sweep, use wandb.config
         sys.argv.remove('--sweep')
         args0 = tyro.cli(Args)
         # Initialize wandb first
@@ -65,29 +64,35 @@ def main() -> None:
             project=args0.wandb_project,
             group=args0.wandb_group,
         )
-        # Now we can safely access wandb.config
         args = Args.from_wandb_config(wandb.config)
-        wandb.config.update(vars(args))
     else:
-        # Normal CLI usage with tyro
         args = tyro.cli(Args)
-        if args.use_wandb:
-            if args.wandb_group:
-                wandb.init(
-                    project=args.wandb_project,
-                    group=args.wandb_group,
-                    config=vars(args),
-                )
-            else:
-                wandb.init(
-                    project=args.wandb_project,
-                    config=vars(args),
-                )
-    
+
     if torch.cuda.is_available():
         torch.cuda.set_device(args.gpu_id)
     
     run_name = f'{args.project_name}_{args.env_id}_{args.view_size}x{args.view_size}_{int(time.time())}'
+    
+    if any(arg.startswith('--sweep') for arg in sys.argv[1:]):
+        config_dict = vars(args)
+        config_dict['run_name'] = run_name
+        wandb.config.update(config_dict)
+    elif args.use_wandb:
+        config_dict = vars(args)
+        config_dict['run_name'] = run_name
+        if args.wandb_group:
+            wandb.init(
+                project=args.wandb_project,
+                group=args.wandb_group,
+                name=run_name,
+                config=config_dict,
+            )
+        else:
+            wandb.init(
+                project=args.wandb_project,
+                name=run_name,
+                config=config_dict,
+            )
     
     writer = SummaryWriter('runs/' + run_name)
     writer.add_text(

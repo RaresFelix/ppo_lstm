@@ -164,7 +164,6 @@ class RolloutBuffer():
                 self.last_value
             )
             
-            # Regular tensors
             regular_tensors = [
                 self.observations[:self.idx],
                 self.dones[:self.idx],
@@ -177,12 +176,10 @@ class RolloutBuffer():
                 self.next_dones[:self.idx]
             ]
             
-            # LSTM hidden states
             lstm_tensors = [
-                self.hidden[:self.idx],  # Single hidden state repeated twice to maintain compatibility
+                self.hidden[:self.idx],  
             ]
             
-            # Process regular tensors and LSTM hidden states separately
             result = [
                 reshape_sequence_data(tensor, self.args.seq_len)
                 for tensor in regular_tensors
