@@ -85,13 +85,19 @@ class ActorHead(nn.Module):
             nn.Tanh(),
             layer_init(nn.Linear(args.hidden_layer_size, act_dim), std=.01)
         )
+        self.act_dim = act_dim
+        self.rand_move_eps = args.rand_move_eps
     
     def forward(self, features: Float[Tensor, "*batch hidden_size"]) -> Float[Tensor, "*batch act_dim"]:
         return self.fc(features)
     
     def get_action_dist(self, features: Float[Tensor, "*batch hidden_size"]):
         logits = self.forward(features)
-        return torch.distributions.Categorical(logits=logits)
+        # Mix network probabilities with uniform distribution
+        probs = torch.softmax(logits, dim=-1)
+        uniform_probs = torch.ones_like(probs) / self.act_dim
+        mixed_probs = (1 - self.rand_move_eps) * probs + self.rand_move_eps * uniform_probs
+        return torch.distributions.Categorical(probs=mixed_probs)
     
     def get_action(self, features: Float[Tensor, "batch hidden_size"]):
         dist = self.get_action_dist(features)
