@@ -48,6 +48,9 @@ class Agent():
         os.makedirs(self.checkpoint_dir, exist_ok=True)
         
         self.ema_return = None
+        self.observation = None
+        self.done = None
+        self.hidden = None
     
     def _log_episode_stats(self, infos):
         """Log episode statistics to tensorboard.
@@ -92,70 +95,76 @@ class Agent():
                 val = self.critic_head(features).item()
                 self.writer.add_scalar(f'probes/critic_value_{obs_v}', val, self.step)
 
+    def step_env(self):
+        """
+        Take one step in the environment using the current policy.
+        Returns:
+            Tuple containing (observation, action, log_prob, value, next_observation, 
+                            reward, next_done, next_hidden, info)
+        """
+        if self.observation is None:
+            self.observation = self.envs.reset()[0]
+            self.done = np.zeros(self.args.num_envs)
+            self.hidden = torch.zeros(2, self.args.num_envs, self.args.hidden_size, device=self.device)
+
+        obs_tensor = torch.tensor(self.observation, dtype=torch.float32, device=self.device)
+        
+        with torch.no_grad():
+            features, next_hidden = self.feature_extractor.get_features(obs_tensor, self.hidden)
+            action, log_prob = self.actor_head.get_action(features)
+            value = self.critic_head(features)
+
+        next_observation, reward, termination, truncation, infos = self.envs.step(action.cpu().numpy())
+        next_done = np.logical_or(termination, truncation)
+
+        # Reset hidden state for done environments
+        for i in range(self.args.num_envs):
+            if self.done[i] or next_done[i]:
+                next_hidden[0, i].zero_()
+                next_hidden[1, i].zero_()
+
+        return (obs_tensor, action, log_prob, value, next_observation, reward, 
+                next_done, next_hidden, infos)
+
     @torch.inference_mode()
     def rollout(self) -> None:
         self.feature_extractor.eval()
         self.actor_head.eval()
         self.critic_head.eval()
 
-        if self.step == 0:
-            observation = self.envs.reset()[0]
-            done = np.zeros(self.args.num_envs)
-            hidden = torch.zeros(2, self.args.num_envs, self.args.hidden_size, device=self.device)
-        else:
-            observation = self.last_observation
-            done = self.last_done
-            hidden = self.last_hidden
-
         self.buffer.reset()
         freq_terminal_log = 1
         cnt_terminal_log = 0
+        
         for step in range(self.args.num_steps):
-            obs_tensor = torch.tensor(observation, dtype=torch.float32, device=self.device)
             self.step += self.args.num_envs
-
-            with torch.no_grad():
-                features, next_hidden = self.feature_extractor.get_features(obs_tensor, hidden)
-                if random.random() < self.args.rand_move_eps:
-                    action = torch.randint(self.act_dim, (self.args.num_envs,), device=self.device)
-                    log_prob = self.actor_head.get_log_prob(features, action)
-                else:
-                    action, log_prob = self.actor_head.get_action(features)
-                value = self.critic_head(features)
-
-            next_observation, reward, termination, truncation, infos = self.envs.step(action.cpu().numpy())
-            next_done = np.logical_or(termination, truncation)
+            
+            (obs_tensor, action, log_prob, value, next_observation, reward, 
+             next_done, next_hidden, infos) = self.step_env()
 
             if 'episode' in infos and self.writer and infos['_episode'].sum():
                 cnt_terminal_log += 1
                 if cnt_terminal_log % freq_terminal_log == 0:
                     self._log_episode_stats(infos)
             
-            self.buffer.add(obs_tensor, done, action, log_prob, value, next_observation, next_done, reward, hidden)
+            self.buffer.add(obs_tensor, self.done, action, log_prob, value, 
+                          next_observation, next_done, reward, self.hidden)
 
-            hidden = next_hidden
+            self.observation = next_observation
+            self.done = next_done
+            self.hidden = next_hidden
 
-            for i in range(self.args.num_envs):
-                if done[i] or next_done[i]:
-                    hidden[0, i].zero_()
-                    hidden[1, i].zero_()
-
-            observation = next_observation
-            done = next_done
-
-        obs_tensor = torch.tensor(observation, dtype=torch.float32, device=self.device)
-        features, _ = self.feature_extractor.get_features(obs_tensor, hidden)
+        # Get final value estimate
+        obs_tensor = torch.tensor(self.observation, dtype=torch.float32, device=self.device)
+        features, _ = self.feature_extractor.get_features(obs_tensor, self.hidden)
         next_value = self.critic_head(features)
         
-        self.buffer.add_last(next_done, next_value, hidden)
+        self.buffer.add_last(self.done, next_value, self.hidden)
+        
         self.feature_extractor.train()
         self.actor_head.train()
         self.critic_head.train()
 
-        self.last_observation = observation
-        self.last_done = done
-        self.last_hidden = hidden
-            
     def _log_training_stats(self, approx_kl, fraction_clipped, entropy, actor_loss, VF_loss, advantages, values):
         """Log training statistics to tensorboard.
         Args:
@@ -254,6 +263,11 @@ class Agent():
     def train(self) -> None:
         progress_bar = tqdm(range(self.args.total_steps))
         self.step = 0
+
+        wandb.watch(self.feature_extractor, log = 'all')
+        wandb.watch(self.actor_head, log = 'all') 
+        wandb.watch(self.critic_head, log = 'all')
+
 
         print('num_mini_batches', self.args.num_minibatches)
         for step in range(self.args.num_iterations):
