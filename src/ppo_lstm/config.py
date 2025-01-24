@@ -4,7 +4,7 @@ from dataclasses import dataclass, asdict
 class Args:
     # Project and Environment Configuration
     project_name: str = 'ppo_lstm'
-    env_id: str = 'MiniGrid-MemoryS9-v0'
+    env_id: str = 'MiniGrid-MemoryS13Random-v0'
     view_size: int = 3  # 0 for full observation
     one_hot: bool = True  # use one-hot encoding for partial observation
     use_pixels: bool = False  # will make env output pixels & use CNNs
@@ -13,7 +13,8 @@ class Args:
 
     use_wandb: bool = True 
     wandb_project: str = 'ppo_lstm'
-    wandb_group: str = 'sweeps_3x3_S9_random'
+    wandb_group: str = 'sweeps_3x3_real_S13_random_0_16'
+    deployment: bool = False
 
     # Core Training Parameters
     total_steps: int = int(2e6)
@@ -22,10 +23,10 @@ class Args:
     seq_len: int = 8  # sequence length for LSTM
     update_epochs: int = 64
 
-    rand_move_eps: float = 5e-3# frequency of completely random moves
+    rand_move_eps: float = .1 # frequency of completely random moves
 
     # Network Architecture
-    hidden_size: int = 8
+    hidden_size: int = 16
     hidden_layer_size: int = 64
 
     # Optimization Parameters
@@ -39,7 +40,7 @@ class Args:
     gamma: float = 0.99
     gae_lambda: float = 0.95
     vf_coef: float = 0.5
-    entropy_coef: float = 0.0001
+    entropy_coef: float = 0.001
 
     # Buffer and Batch Settings
     buffer_size: int = int(512)
@@ -48,7 +49,7 @@ class Args:
     # Logging and Saving
     debug_probes: bool = False
     record_video: bool = False
-    save_freq: int = int(1048576)
+    save_freq: int = int(1048576 / 4)
     save_dir: str = "checkpoints"
 
     # Derived Parameters (calculated in post_init)
@@ -64,14 +65,16 @@ class Args:
     def __post_init__(self):
         self.n_epochs = self.total_steps // (self.num_steps * self.num_envs)
 
-        assert self.num_steps % self.seq_len == 0, "num_steps must be divisible by seq_len"
+        if not self.deployment: # if in deployment, you don't train
+            assert self.num_steps % self.seq_len == 0, "num_steps must be divisible by seq_len"
         self.batch_size = self.num_steps * self.num_envs
         self.num_iterations = self.total_steps // self.batch_size
         self.num_minibatches = self.batch_size // (self.minibatch_size * self.seq_len)
 
-        assert self.num_iterations != 0, "num_iterations must be greater than 0"
-        assert self.num_minibatches != 0, "num_minibatches must be greater than 0"
-        assert self.batch_size % (self.minibatch_size * self.seq_len) == 0, "batch_size must be divisible by minibatch_size * seq_len"
+        if not self.deployment: # if in deployment, you don't train
+            assert self.num_iterations != 0, "num_iterations must be greater than 0"
+            assert self.num_minibatches != 0, "num_minibatches must be greater than 0"
+            assert self.batch_size % (self.minibatch_size * self.seq_len) == 0, "batch_size must be divisible by minibatch_size * seq_len"
 
     @classmethod
     def from_wandb_config(cls, config):

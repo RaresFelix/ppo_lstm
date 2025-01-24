@@ -20,7 +20,7 @@ def create_minigrid_env(args: Args, idx: int, run_name: str, record_video: bool)
         env = MinigridMemoryEnv(
             args.env_id,
             render_mode='rgb_array',
-            agent_view_size=5,
+            agent_view_size=args.view_size,
             record_video=record_video and idx == 0,
             run_name=run_name
         )
@@ -30,7 +30,7 @@ def create_minigrid_env(args: Args, idx: int, run_name: str, record_video: bool)
             args.env_id,
             args.one_hot,
             render_mode='rgb_array',
-            agent_view_size=5,
+            agent_view_size=args.view_size,
             record_video=record_video and idx == 0,
             run_name=run_name
         )
@@ -63,6 +63,7 @@ def main() -> None:
         wandb.init(
             project=args0.wandb_project,
             group=args0.wandb_group,
+            monitor_gym=True,
         )
         args = Args.from_wandb_config(wandb.config)
     else:
@@ -86,12 +87,14 @@ def main() -> None:
                 group=args.wandb_group,
                 name=run_name,
                 config=config_dict,
+                monitor_gym=True,
             )
         else:
             wandb.init(
                 project=args.wandb_project,
                 name=run_name,
                 config=config_dict,
+                monitor_gym=True,
             )
     
     writer = SummaryWriter('runs/' + run_name)
