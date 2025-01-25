@@ -5,6 +5,7 @@ from typing import Callable
 import wandb  
 import tyro
 from dataclasses import asdict
+import signal
 
 import gymnasium as gym
 import numpy as np
@@ -76,7 +77,21 @@ def make_env(args: Args, idx: Int, run_name: str, record_video: bool = False) ->
         return create_standard_env(args, idx, run_name, record_video)
     return thunk
 
+def cleanup_handler(signum, frame):
+    print("\nCleaning up resources...")
+    if 'agent' in globals():
+        agent.cleanup()
+    if 'writer' in globals():
+        writer.close()
+    if 'wandb' in sys.modules and wandb.run is not None:
+        wandb.finish()
+    sys.exit(0)
+
 def main() -> None:
+    # Register signal handlers
+    signal.signal(signal.SIGINT, cleanup_handler)
+    signal.signal(signal.SIGTERM, cleanup_handler)
+    
     torch.set_float32_matmul_precision('high')
     
     # Check if running as wandb sweep
@@ -150,10 +165,11 @@ def main() -> None:
     
     try:
         agent.train()
+    except Exception as e:
+        print(f"Error during training: {e}")
+        cleanup_handler(None, None)
     finally:
-        if args.use_wandb:
-            wandb.finish()
-        writer.close()
+        cleanup_handler(None, None)
 
 if __name__ == '__main__':
     main()

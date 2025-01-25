@@ -277,7 +277,7 @@ class Agent():
         obs = self.eval_envs.reset()[0]
         hidden = torch.zeros(2, self.args.num_eval_envs, self.args.hidden_size, device=self.device)
         
-        while len(episode_rewards) < self.args.num_eval_episodes:
+        for step in range(self.args.eval_steps):
             obs_tensor = torch.tensor(obs, dtype=torch.float32, device=self.device)
             features, next_hidden = self.feature_extractor.get_features(obs_tensor, hidden)
             action, _ = self.actor_head.get_action(features)
@@ -285,11 +285,9 @@ class Agent():
             next_obs, reward, terminated, truncated, info = self.eval_envs.step(action.cpu().numpy())
             done = np.logical_or(terminated, truncated)
             
-            if "final_info" in info:
-                for item in info["final_info"]:
-                    if item is not None:
-                        episode_rewards.append(item["episode"]["r"])
-                        episode_lengths.append(item["episode"]["l"])
+            if '_episode' in info and info['_episode'].sum():
+                episode_rewards.extend(info['episode']['r'][info['_episode']])
+                episode_lengths.extend(info['episode']['l'][info['_episode']])
             
             # Reset hidden state for done environments
             for i in range(self.args.num_eval_envs):
@@ -299,17 +297,18 @@ class Agent():
             obs = next_obs
             hidden = next_hidden
             
-        mean_reward = np.mean(episode_rewards)
-        mean_length = np.mean(episode_lengths)
-        
-        self.writer.add_scalar("eval/mean_reward", mean_reward, global_step)
-        self.writer.add_scalar("eval/mean_episode_length", mean_length, global_step)
-        
-        if self.args.use_wandb:
-            wandb.log({
-                "eval/mean_reward": mean_reward,
-                "eval/mean_episode_length": mean_length
-            }, step=global_step)
+        if episode_rewards:  # Only log if we have completed episodes
+            mean_reward = np.mean(episode_rewards)
+            mean_length = np.mean(episode_lengths)
+            
+            self.writer.add_scalar("eval/mean_reward", mean_reward, global_step)
+            self.writer.add_scalar("eval/mean_episode_length", mean_length, global_step)
+            
+            if self.args.use_wandb:
+                wandb.log({
+                    "eval/mean_reward": mean_reward,
+                    "eval/mean_episode_length": mean_length
+                }, step=global_step)
             
         self.feature_extractor.train()
         self.actor_head.train()
@@ -319,9 +318,10 @@ class Agent():
         progress_bar = tqdm(range(self.args.total_steps))
         self.step = 0
 
-        wandb.watch(self.feature_extractor, log = 'all')
-        wandb.watch(self.actor_head, log = 'all') 
-        wandb.watch(self.critic_head, log = 'all')
+        if self.args.watch_model:
+            wandb.watch(self.feature_extractor, log = 'all')
+            wandb.watch(self.actor_head, log = 'all') 
+            wandb.watch(self.critic_head, log = 'all')
 
         print('num_mini_batches', self.args.num_minibatches)
         for step in range(self.args.num_iterations):
@@ -394,3 +394,14 @@ class Agent():
             # Add evaluation using step directly
             if self.args.eval_freq > 0 and step % self.args.eval_freq == 0:
                 self.evaluate(self.step)
+    
+    def cleanup(self):
+        """Clean up resources when terminating."""
+        if hasattr(self, 'envs'):
+            self.envs.close()
+        if hasattr(self, 'eval_envs') and self.eval_envs is not None:
+            self.eval_envs.close()
+        if hasattr(self, 'actor'):
+            # Clear CUDA cache
+            if self.device.type == 'cuda':
+                torch.cuda.empty_cache()
