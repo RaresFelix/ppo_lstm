@@ -4,7 +4,7 @@ from dataclasses import dataclass, asdict
 class Args:
     # Project and Environment Configuration
     project_name: str = 'ppo_lstm'
-    env_id: str = 'MiniGrid-CustomMazeS13'
+    env_id: str = 'MiniGrid-CustomMazeRandomS15'
     view_size: int = 3  # 0 for full observation
     one_hot: bool = True # use one-hot encoding for partial observation
     use_pixels: bool = False  # will make env output pixels & use CNNs
@@ -13,7 +13,8 @@ class Args:
 
     use_wandb: bool = True
     wandb_project: str = 'ppo_lstm'
-    wandb_group: str = 'CustomMazeS13_normalized_withoutcompile_try0'
+    wandb_group: str = 'CustomMazeRandomS15-try1'
+    watch_model: bool = False
     deployment: bool = False
     auto_mini_batch: bool = True
 
@@ -56,8 +57,8 @@ class Args:
     # Evaluation Parameters
     eval_freq: int = int(1)  # Frequency in steps (e.g. 1 = every step, 2 = every other step)
     num_eval_envs: int = 8  # number of evaluation environments
-    num_eval_episodes: int = 10  # number of episodes to evaluate on
-    eval_env_id: str = ""  # if empty, will use the same as env_id
+    eval_steps: int =  512
+    eval_env_id: str = "MiniGrid-CustomMazeS13-v0"  # if empty, will use the same as env_id
 
     # Derived Parameters (calculated in post_init)
     n_epochs: int = 0

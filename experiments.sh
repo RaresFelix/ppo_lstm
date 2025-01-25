@@ -1,5 +1,4 @@
-# Store the base command
-CMD="python -m src.ppo_lstm.main --one-hot --use-wandb"
+CMD="python -m src.ppo_lstm.main --use-wandb"
 
 # Array to store PIDs
 pids=()
@@ -9,21 +8,17 @@ trap 'echo "Caught signal, killing all processes..."; for pid in "${pids[@]}"; d
 
 # Start processes and store PIDs
 for gpu_id in 0 1 2 3; do
-    # First experiment on this GPU
     $CMD --gpu-id $gpu_id &
     pids+=($!)
-    sleep 2  # Wait 2 seconds
+    sleep 2 
     
-    # Second experiment on this GPU
     $CMD --gpu-id $gpu_id &
     pids+=($!)
-    sleep 2  # Wait 2 seconds
+    sleep 2 
 
-    # Third experiment on this GPU
     $CMD --gpu-id $gpu_id &
     pids+=($!)
-    sleep 2  # Wait 2 seconds
+    sleep 2 
 done
 
-# Wait for all processes
 wait

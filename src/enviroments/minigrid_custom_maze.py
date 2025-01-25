@@ -132,13 +132,48 @@ class MiniGridCustomMaze(MiniGridEnv):
     def render(self):
         return super().render()
 
+class MiniGridCustomMazeRandom(MiniGridCustomMaze):
+    def __init__(
+        self,
+        max_size=8,
+        min_size=6,
+        agent_start_pos=(1, 1),
+        agent_start_dir=0,
+        max_steps: int | None = None,
+        **kwargs,
+    ):
+        self.max_size = max_size
+        self.min_size = min_size
+        size = self._rand_int(min_size, max_size + 1)
+        self.width = size
+        self.height = size
+        super().__init__(
+            size=size,
+            agent_start_pos=agent_start_pos,
+            agent_start_dir=agent_start_dir,
+            max_steps=max_steps,
+            **kwargs,
+        )
+    
+    def reset(self, seed=None, options=None):
+        # Choose new random size before reset
+        size = self._rand_int(self.min_size, self.max_size + 1)
+        self.width = size
+        self.height = size
+        self.grid_size = size
+        self.grid = None
+        return super().reset(seed=seed, options=options)
+
 class MiniGridCustomMazeEnv(gym.Env):
     def __init__(self, env_id: str, use_one_hot: bool, render_mode='rgb_array', agent_view_size=3, record_video=False, run_name=None):
         super().__init__()
         
-        # Parse size from env_id using regex (e.g., 'CustomMazeS8', 'CustomMazeS8-v0', 'CustomMazeS10-Stable')
-        size_match = re.search(r'CustomMazeS(\d+)', env_id)
+        # Parse size from env_id using regex, supporting both fixed and random sizes
+        # e.g., 'CustomMazeS8', 'CustomMazeRandomS8'
+        size_match = re.search(r'CustomMaze(?:Random)?S(\d+)', env_id)
         size = int(size_match.group(1)) if size_match else 8
+        
+        is_random = 'Random' in env_id
         
         full_obs = False
         if agent_view_size == 0:
@@ -147,7 +182,7 @@ class MiniGridCustomMazeEnv(gym.Env):
 
         # Use gym.make() instead of direct instantiation
         self._env = gym.make(
-            f'MiniGrid-CustomMaze-S{size}-v0',
+            f'MiniGrid-CustomMaze{"Random" if is_random else ""}-S{size}-v0',
             render_mode=render_mode,
             agent_view_size=agent_view_size
         )
@@ -182,5 +217,15 @@ for i in range(4, 25):
         entry_point='src.enviroments.minigrid_custom_maze:MiniGridCustomMaze',
         kwargs={
             'size': i,
+        }
+    )
+
+for i in range(4, 25):
+    register(
+        id=f'MiniGrid-CustomMazeRandom-S{i}-v0',
+        entry_point='src.enviroments.minigrid_custom_maze:MiniGridCustomMazeRandom',
+        kwargs={
+            'max_size': i,
+            'min_size': 6,
         }
     )
