@@ -4,6 +4,7 @@ import time
 from typing import Callable
 import wandb  
 import tyro
+from dataclasses import asdict
 
 import gymnasium as gym
 import numpy as np
@@ -13,12 +14,32 @@ from torch.utils.tensorboard import SummaryWriter
 
 from .agent import Agent
 from .config import Args
+from ..enviroments.minigrid_custom_maze import MiniGridCustomMazeEnv
 
 def create_minigrid_env(args: Args, idx: int, run_name: str, record_video: bool) -> gym.Env:
     if args.use_pixels:
         from ..enviroments.minigrid_memory import MinigridMemoryEnv
         env = MinigridMemoryEnv(
             args.env_id,
+            render_mode='rgb_array',
+            agent_view_size=args.view_size,
+            record_video=record_video and idx == 0,
+            run_name=run_name
+        )
+    elif 'ObstructedMaze' in args.env_id:
+        from ..enviroments.minigrid_obstructed import MiniGridObstructedEnv
+        env = MiniGridObstructedEnv(
+            args.env_id,
+            args.one_hot,
+            render_mode='rgb_array',
+            agent_view_size=args.view_size,
+            record_video=record_video and idx == 0,
+            run_name=run_name
+        )
+    elif 'CustomMaze' in args.env_id:
+        env = MiniGridCustomMazeEnv(
+            args.env_id,  
+            args.one_hot,
             render_mode='rgb_array',
             agent_view_size=args.view_size,
             record_video=record_video and idx == 0,
@@ -34,7 +55,10 @@ def create_minigrid_env(args: Args, idx: int, run_name: str, record_video: bool)
             record_video=record_video and idx == 0,
             run_name=run_name
         )
-    return gym.wrappers.RecordEpisodeStatistics(env)
+    env = gym.wrappers.RecordEpisodeStatistics(env)
+    #NORMALIZE REWARD
+    env = gym.wrappers.NormalizeReward(env, .99)
+    return env
 
 def create_standard_env(args: Args, idx: int, run_name: str, record_video: bool) -> gym.Env:
     env = gym.make(args.env_id, render_mode='rgb_array')
@@ -113,7 +137,16 @@ def main() -> None:
         [make_env(args, i, run_name, args.record_video) for i in range(args.num_envs)]
     )
     
-    agent = Agent(args, envs, run_name, writer)
+    # Create evaluation environments if eval_env_id is specified
+    eval_envs = None
+    if args.num_eval_envs > 0:
+        eval_env_id = args.eval_env_id if args.eval_env_id else args.env_id
+        temp_args = Args(**{**asdict(args), 'env_id': eval_env_id})
+        eval_envs = gym.vector.AsyncVectorEnv(
+            [make_env(temp_args, i, f"{run_name}_eval", False) for i in range(args.num_eval_envs)]
+        )
+    
+    agent = Agent(args, envs, run_name, writer, eval_envs=eval_envs)
     
     try:
         agent.train()
