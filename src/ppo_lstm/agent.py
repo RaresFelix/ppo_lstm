@@ -1,4 +1,5 @@
 import torch
+import gymnasium as gym
 import random
 import numpy as np
 import time
@@ -18,7 +19,7 @@ from pathlib import Path
 import wandb  
 
 class Agent():
-    def __init__(self, args: Args, envs, run_name: str, writer: Optional[SummaryWriter] = None, device = None):
+    def __init__(self, args: Args, envs, run_name: str, writer: Optional[SummaryWriter] = None, device = None, eval_envs: Optional[gym.vector.VectorEnv] = None):
         self.args = args
         self.writer = writer
         self.run_name = run_name
@@ -33,15 +34,16 @@ class Agent():
         self.actor_head = ActorHead(args.hidden_size, self.act_dim, args).to(device)
         self.critic_head = CriticHead(args.hidden_size, args).to(device)
 
-        self.feature_extractor = torch.compile(self.feature_extractor)
-        self.actor_head = torch.compile(self.actor_head)
-        self.critic_head = torch.compile(self.critic_head)
+#        self.feature_extractor = torch.compile(self.feature_extractor)
+#        self.actor_head = torch.compile(self.actor_head)
+#        self.critic_head = torch.compile(self.critic_head)
 
         self.feature_optimizer = optim.AdamW(self.feature_extractor.parameters(), lr=args.learning_rate, betas=args.betas)
         self.actor_optimizer = optim.AdamW(self.actor_head.parameters(), lr=args.learning_rate, betas=args.betas)
         self.critic_optimizer = optim.AdamW(self.critic_head.parameters(), lr=args.learning_rate, betas=args.betas)
 
         self.envs = envs
+        self.eval_envs = eval_envs
 
         self.buffer = RolloutBuffer(self.obs_dim, args)
         self.checkpoint_dir = Path(args.save_dir) / self.run_name
@@ -260,6 +262,59 @@ class Agent():
         self.critic_optimizer.load_state_dict(checkpoint['critic_optimizer_state_dict'])
         return checkpoint['step']
 
+    @torch.inference_mode()
+    def evaluate(self, global_step: int):
+        if not self.eval_envs:
+            return
+            
+        self.feature_extractor.eval()
+        self.actor_head.eval()
+        self.critic_head.eval()
+        
+        episode_rewards = []
+        episode_lengths = []
+        
+        obs = self.eval_envs.reset()[0]
+        hidden = torch.zeros(2, self.args.num_eval_envs, self.args.hidden_size, device=self.device)
+        
+        while len(episode_rewards) < self.args.num_eval_episodes:
+            obs_tensor = torch.tensor(obs, dtype=torch.float32, device=self.device)
+            features, next_hidden = self.feature_extractor.get_features(obs_tensor, hidden)
+            action, _ = self.actor_head.get_action(features)
+            
+            next_obs, reward, terminated, truncated, info = self.eval_envs.step(action.cpu().numpy())
+            done = np.logical_or(terminated, truncated)
+            
+            if "final_info" in info:
+                for item in info["final_info"]:
+                    if item is not None:
+                        episode_rewards.append(item["episode"]["r"])
+                        episode_lengths.append(item["episode"]["l"])
+            
+            # Reset hidden state for done environments
+            for i in range(self.args.num_eval_envs):
+                if done[i]:
+                    next_hidden[:, i].zero_()
+            
+            obs = next_obs
+            hidden = next_hidden
+            
+        mean_reward = np.mean(episode_rewards)
+        mean_length = np.mean(episode_lengths)
+        
+        self.writer.add_scalar("eval/mean_reward", mean_reward, global_step)
+        self.writer.add_scalar("eval/mean_episode_length", mean_length, global_step)
+        
+        if self.args.use_wandb:
+            wandb.log({
+                "eval/mean_reward": mean_reward,
+                "eval/mean_episode_length": mean_length
+            }, step=global_step)
+            
+        self.feature_extractor.train()
+        self.actor_head.train()
+        self.critic_head.train()
+        
     def train(self) -> None:
         progress_bar = tqdm(range(self.args.total_steps))
         self.step = 0
@@ -267,7 +322,6 @@ class Agent():
         wandb.watch(self.feature_extractor, log = 'all')
         wandb.watch(self.actor_head, log = 'all') 
         wandb.watch(self.critic_head, log = 'all')
-
 
         print('num_mini_batches', self.args.num_minibatches)
         for step in range(self.args.num_iterations):
@@ -336,3 +390,7 @@ class Agent():
                 self.save(self.step)
             if self.args.debug_probes:
                 self._run_debug_probes()
+            
+            # Add evaluation using step directly
+            if self.args.eval_freq > 0 and step % self.args.eval_freq == 0:
+                self.evaluate(self.step)

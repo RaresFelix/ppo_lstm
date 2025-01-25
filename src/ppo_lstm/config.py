@@ -4,33 +4,34 @@ from dataclasses import dataclass, asdict
 class Args:
     # Project and Environment Configuration
     project_name: str = 'ppo_lstm'
-    env_id: str = 'MiniGrid-MemoryS13Random-v0'
+    env_id: str = 'MiniGrid-CustomMazeS13'
     view_size: int = 3  # 0 for full observation
-    one_hot: bool = True  # use one-hot encoding for partial observation
+    one_hot: bool = True # use one-hot encoding for partial observation
     use_pixels: bool = False  # will make env output pixels & use CNNs
     torch_deterministic: bool = True
     seed: int = 0
 
-    use_wandb: bool = True 
+    use_wandb: bool = True
     wandb_project: str = 'ppo_lstm'
-    wandb_group: str = 'sweeps_3x3_real_S13_random_0_16'
+    wandb_group: str = 'CustomMazeS13_normalized_withoutcompile_try0'
     deployment: bool = False
+    auto_mini_batch: bool = True
 
     # Core Training Parameters
-    total_steps: int = int(2e6)
-    num_envs: int = 64
-    num_steps: int = 128
-    seq_len: int = 8  # sequence length for LSTM
+    total_steps: int = int(5e7)
+    num_envs: int = 128
+    num_steps: int = 2048 
+    seq_len: int = 64 # sequence length for LSTM
     update_epochs: int = 64
 
     rand_move_eps: float = .1 # frequency of completely random moves
 
     # Network Architecture
-    hidden_size: int = 16
-    hidden_layer_size: int = 64
+    hidden_size: int = 32
+    hidden_layer_size: int = 128
 
     # Optimization Parameters
-    learning_rate: float = 2e-3
+    learning_rate: float = 8e-4
     betas: tuple = (0.9, 0.999)
     max_grad_norm: float = 0.5
 
@@ -44,13 +45,19 @@ class Args:
 
     # Buffer and Batch Settings
     buffer_size: int = int(512)
-    minibatch_size: int = 1024
+    minibatch_size: int = 256
 
     # Logging and Saving
     debug_probes: bool = False
     record_video: bool = False
-    save_freq: int = int(1048576 / 4)
+    save_freq: int = int(1048576)
     save_dir: str = "checkpoints"
+
+    # Evaluation Parameters
+    eval_freq: int = int(1)  # Frequency in steps (e.g. 1 = every step, 2 = every other step)
+    num_eval_envs: int = 8  # number of evaluation environments
+    num_eval_episodes: int = 10  # number of episodes to evaluate on
+    eval_env_id: str = ""  # if empty, will use the same as env_id
 
     # Derived Parameters (calculated in post_init)
     n_epochs: int = 0
@@ -60,11 +67,13 @@ class Args:
 
     gpu_id: int = 0
 
-    ema_decay: float = 0.995  # decay rate for exponential moving average of returns
+    ema_decay: float = 0.99  # decay rate for exponential moving average of returns
 
     def __post_init__(self):
         self.n_epochs = self.total_steps // (self.num_steps * self.num_envs)
 
+        if self.auto_mini_batch:
+            self.minibatch_size = self.num_steps * self.num_envs // self.seq_len
         if not self.deployment: # if in deployment, you don't train
             assert self.num_steps % self.seq_len == 0, "num_steps must be divisible by seq_len"
         self.batch_size = self.num_steps * self.num_envs
