@@ -214,7 +214,7 @@ from gymnasium.envs.registration import register
 for i in range(4, 25):
     register(
         id=f'MiniGrid-CustomMaze-S{i}-v0',
-        entry_point='src.enviroments.minigrid_custom_maze:MiniGridCustomMaze',
+        entry_point='src.environments.minigrid_custom_maze:MiniGridCustomMaze',
         kwargs={
             'size': i,
         }
@@ -223,7 +223,7 @@ for i in range(4, 25):
 for i in range(4, 25):
     register(
         id=f'MiniGrid-CustomMazeRandom-S{i}-v0',
-        entry_point='src.enviroments.minigrid_custom_maze:MiniGridCustomMazeRandom',
+        entry_point='src.environments.minigrid_custom_maze:MiniGridCustomMazeRandom',
         kwargs={
             'max_size': i,
             'min_size': 6,

@@ -15,11 +15,11 @@ from torch.utils.tensorboard import SummaryWriter
 
 from .agent import Agent
 from .config import Args
-from ..enviroments.minigrid_custom_maze import MiniGridCustomMazeEnv
+from ..environments.minigrid_custom_maze import MiniGridCustomMazeEnv
 
 def create_minigrid_env(args: Args, idx: int, run_name: str, record_video: bool) -> gym.Env:
     if args.use_pixels:
-        from ..enviroments.minigrid_memory import MinigridMemoryEnv
+        from ..environments.minigrid_memory import MinigridMemoryEnv
         env = MinigridMemoryEnv(
             args.env_id,
             render_mode='rgb_array',
@@ -28,7 +28,7 @@ def create_minigrid_env(args: Args, idx: int, run_name: str, record_video: bool)
             run_name=run_name
         )
     elif 'ObstructedMaze' in args.env_id:
-        from ..enviroments.minigrid_obstructed import MiniGridObstructedEnv
+        from ..environments.minigrid_obstructed import MiniGridObstructedEnv
         env = MiniGridObstructedEnv(
             args.env_id,
             args.one_hot,
@@ -47,7 +47,7 @@ def create_minigrid_env(args: Args, idx: int, run_name: str, record_video: bool)
             run_name=run_name
         )
     else:
-        from ..enviroments.minigrid_memory import MiniGridMemoryBasicEnv
+        from ..environments.minigrid_memory import MiniGridMemoryBasicEnv
         env = MiniGridMemoryBasicEnv(
             args.env_id,
             args.one_hot,
