@@ -31,6 +31,74 @@
     </div>
 </div>
 
+<!-- New Visualization Section -->
+<div class="bg-white shadow rounded-lg p-4 mt-6">
+    <h2 class="text-xl font-bold mb-3">Agent Visualization</h2>
+    
+    <!-- Modified Run Navigation to use flex container for vertical alignment -->
+    <div class="flex items-stretch justify-between relative">
+        <button id="prevRun" class="text-6xl font-bold text-[#da7756] px-4 hover:bg-gray-100 flex items-center">&lt;</button>
+        
+        <div class="flex-1">
+            <!-- Visualization container -->
+            <div class="flex flex-wrap justify-center items-center gap-0">
+                <!-- Maze View Container -->
+                <div class="relative w-fit">
+                    <div class="p-[4%] rounded-xl" style="background-color: #da7756;">
+                        <div class="bg-white">
+                            <img id="mazeFrame" class="w-full h-full object-contain aspect-square max-w-[400px]" src="" alt="Maze View">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Adaptive Connecting Line -->
+                <div class="hidden lg:block h-2.5 connecting-line" 
+                     style="background-color: #da7756; width: clamp(2rem, 5vw, 4rem); margin: 0 -2px;">
+                </div>
+
+                <!-- Memory Heatmap Container -->
+                <div class="relative w-fit">
+                    <div class="p-[4%] rounded-xl" style="background-color: #da7756;">
+                        <div class="bg-white">
+                            <img id="memoryHeatmap" class="w-full h-full object-contain aspect-square max-w-[240px]" src="" alt="Memory Heatmap">
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <button id="nextRun" class="text-6xl font-bold text-[#da7756] px-4 hover:bg-gray-100 flex items-center">&gt;</button>
+    </div>
+
+    <!-- Run info and frame controls -->
+    <div class="mt-4 max-w-xl mx-auto text-center">
+        <div id="runInfo" class="text-sm text-gray-600 mb-2"></div>
+        <input 
+            type="range" 
+            id="frameSlider" 
+            class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-[#da7756]"
+            min="0" 
+            value="0"
+        >
+        <div class="text-center mt-2">
+            Frame: <span id="frameNumber">0</span> / <span id="maxFrame">0</span>
+        </div>
+    </div>
+</div>
+
+<style>
+    @media (min-width: 1024px) {
+        .connecting-line {
+            margin: 0 -0.25rem;
+        }
+    }
+    @media (max-width: 1023px) {
+        .connecting-line {
+            display: none;
+        }
+    }
+</style>
+
 <script>
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d', { alpha: false });
@@ -147,6 +215,74 @@ document.getElementById('viewToggle').addEventListener('change', async (e) => {
         console.error('Error:', error);
     }
 });
+
+// Add new visualization controls
+const frameSlider = document.getElementById('frameSlider');
+const frameNumber = document.getElementById('frameNumber');
+const mazeFrame = document.getElementById('mazeFrame');
+const memoryHeatmap = document.getElementById('memoryHeatmap');
+
+// Run management
+let currentRunIndex = 0;
+let runs = [];
+
+async function loadRuns() {
+    const response = await fetch('/get_runs');
+    runs = await response.json();
+    if (runs.length > 0) {
+        updateRunDisplay();
+        updateFrameSlider();
+    }
+}
+
+function updateRunDisplay() {
+    const run = runs[currentRunIndex];
+    document.getElementById('runInfo').textContent = run.id;
+    // Remove the disabled state checks since navigation is now circular
+    updateFrameSlider();
+}
+
+function updateFrameSlider() {
+    const run = runs[currentRunIndex];
+    const frameSlider = document.getElementById('frameSlider');
+    frameSlider.max = run.frame_count - 1;
+    document.getElementById('maxFrame').textContent = run.frame_count - 1;
+    
+    // Reset to first frame
+    frameSlider.value = 0;
+    frameNumber.textContent = 0;
+    updateImages(0);
+}
+
+function updateImages(frame) {
+    const run = runs[currentRunIndex];
+    const frameStr = frame.toString().padStart(4, '0');
+    mazeFrame.src = `/static/runs/${run.id}/images/env_${frameStr}.png`;
+    memoryHeatmap.src = `/static/runs/${run.id}/images/memory_${frameStr}.png`;
+}
+
+document.getElementById('prevRun').addEventListener('click', () => {
+    currentRunIndex = (currentRunIndex - 1 + runs.length) % runs.length;
+    updateRunDisplay();
+});
+
+document.getElementById('nextRun').addEventListener('click', () => {
+    currentRunIndex = (currentRunIndex + 1) % runs.length;
+    updateRunDisplay();
+});
+
+frameSlider.addEventListener('input', function(e) {
+    const frame = parseInt(e.target.value);
+    frameNumber.textContent = frame;
+    updateImages(frame);
+});
+
+// Initialize
+loadRuns();
+
+// Remove or comment out the old initialization code
+// mazeFrame.src = '/static/images/env_0000.png';
+// memoryHeatmap.src = '/static/images/memory_0000.png';
 
 {% if game_render %}
 displayGame({{ game_render | tojson }});

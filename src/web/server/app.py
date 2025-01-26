@@ -1,3 +1,5 @@
+import os
+from glob import glob
 from flask import Flask, render_template, session, request, jsonify
 from src.web.server.game_manager import GameManager  # Use absolute import
 import secrets
@@ -7,6 +9,24 @@ from functools import lru_cache
 app = Flask(__name__)
 app.secret_key = secrets.token_hex(16)
 game_manager = GameManager()
+
+def get_available_runs():
+    runs_dir = os.path.join(app.static_folder, 'runs')
+    runs = []
+    for run_path in glob(os.path.join(runs_dir, 'run_*')):
+        run_id = os.path.basename(run_path)
+        image_count = len(glob(os.path.join(run_path, 'images', 'env_*.png')))
+        if image_count > 0:
+            runs.append({
+                'id': run_id,
+                'frame_count': image_count
+            })
+    return sorted(runs, key=lambda x: x['id'], reverse=True)
+
+@app.route('/get_runs', methods=['GET'])
+def get_runs():
+    runs = get_available_runs()
+    return jsonify(runs)
 
 @app.route('/')
 def index():
@@ -20,10 +40,12 @@ def index():
         if game_render is None:
             raise ValueError("Game render is None")
             
+        runs = get_available_runs()
         return render_template('index.html', 
                              game_render=game_render,
                              render_height=len(game_render),
-                             render_width=len(game_render[0]))
+                             render_width=len(game_render[0]),
+                             runs=runs)  # Add runs to template context
     except Exception as e:
         logging.error(f"Error in index route: {str(e)}")
         return render_template('index.html', error="Failed to initialize game")
