@@ -5,6 +5,21 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}{% endblock %}</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/pyodide/dev/full/pyodide.js"></script>
+    <script>
+        // Global pyodide instance
+        let pyodideInstance = null;
+        
+        // Initialize pyodide
+        async function initPyodide() {
+            if (!pyodideInstance) {
+                console.log("Initializing Pyodide...");
+                pyodideInstance = await loadPyodide();
+                console.log("Pyodide ready!");
+            }
+            return pyodideInstance;
+        }
+    </script>
 </head>
 <body class="bg-gray-100">
     <nav class="bg-white shadow-lg">

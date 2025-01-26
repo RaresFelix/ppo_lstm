@@ -226,19 +226,119 @@ const memoryHeatmap = document.getElementById('memoryHeatmap');
 let currentRunIndex = 0;
 let runs = [];
 
+// Add image caching
+const imageCache = {
+    maze: {},
+    memory: {}
+};
+
+async function preloadImages(runId, frameCount) {
+    const promises = [];
+    for (let i = 0; i < frameCount; i++) {
+        const frameStr = i.toString().padStart(4, '0');
+        
+        // Preload maze image
+        if (!imageCache.maze[`${runId}_${i}`]) {
+            const mazePromise = new Promise((resolve, reject) => {
+                const img = new Image();
+                img.onload = () => {
+                    imageCache.maze[`${runId}_${i}`] = img;
+                    resolve();
+                };
+                img.onerror = reject;
+                img.src = `/static/runs/${runId}/images/env_${frameStr}.png`;
+            });
+            promises.push(mazePromise);
+        }
+        
+        // Preload memory image
+        if (!imageCache.memory[`${runId}_${i}`]) {
+            const memoryPromise = new Promise((resolve, reject) => {
+                const img = new Image();
+                img.onload = () => {
+                    imageCache.memory[`${runId}_${i}`] = img;
+                    resolve();
+                };
+                img.onerror = reject;
+                img.src = `/static/runs/${runId}/images/memory_${frameStr}.png`;
+            });
+            promises.push(memoryPromise);
+        }
+    }
+    
+    try {
+        await Promise.all(promises);
+        console.log(`Preloaded all images for run ${runId}`);
+    } catch (error) {
+        console.error('Error preloading images:', error);
+    }
+}
+
+async function preloadInitialFrames() {
+    const promises = [];
+    for (const run of runs) {
+        const frameStr = '0000';
+        
+        // Only preload first frame of each run if not already cached
+        if (!imageCache.maze[`${run.id}_0`]) {
+            promises.push(new Promise((resolve, reject) => {
+                const img = new Image();
+                img.onload = () => {
+                    imageCache.maze[`${run.id}_0`] = img;
+                    resolve();
+                };
+                img.onerror = reject;
+                img.src = `/static/runs/${run.id}/images/env_${frameStr}.png`;
+            }));
+        }
+        
+        if (!imageCache.memory[`${run.id}_0`]) {
+            promises.push(new Promise((resolve, reject) => {
+                const img = new Image();
+                img.onload = () => {
+                    imageCache.memory[`${run.id}_0`] = img;
+                    resolve();
+                };
+                img.onerror = reject;
+                img.src = `/static/runs/${run.id}/images/memory_${frameStr}.png`;
+            }));
+        }
+    }
+    
+    try {
+        await Promise.all(promises);
+        console.log('Preloaded initial frames for all runs');
+    } catch (error) {
+        console.error('Error preloading initial frames:', error);
+    }
+}
+
+function updateImages(frame) {
+    const run = runs[currentRunIndex];
+    const mazeImg = imageCache.maze[`${run.id}_${frame}`];
+    const memoryImg = imageCache.memory[`${run.id}_${frame}`];
+    
+    if (mazeImg) mazeFrame.src = mazeImg.src;
+    if (memoryImg) memoryHeatmap.src = memoryImg.src;
+}
+
 async function loadRuns() {
     const response = await fetch('/get_runs');
     runs = await response.json();
     if (runs.length > 0) {
+        // Preload initial frames first
+        await preloadInitialFrames();
         updateRunDisplay();
         updateFrameSlider();
     }
 }
 
-function updateRunDisplay() {
+async function updateRunDisplay() {
     const run = runs[currentRunIndex];
     document.getElementById('runInfo').textContent = run.id;
-    // Remove the disabled state checks since navigation is now circular
+    
+    // Start preloading images immediately
+    await preloadImages(run.id, run.frame_count);
     updateFrameSlider();
 }
 
@@ -254,13 +354,6 @@ function updateFrameSlider() {
     updateImages(0);
 }
 
-function updateImages(frame) {
-    const run = runs[currentRunIndex];
-    const frameStr = frame.toString().padStart(4, '0');
-    mazeFrame.src = `/static/runs/${run.id}/images/env_${frameStr}.png`;
-    memoryHeatmap.src = `/static/runs/${run.id}/images/memory_${frameStr}.png`;
-}
-
 document.getElementById('prevRun').addEventListener('click', () => {
     currentRunIndex = (currentRunIndex - 1 + runs.length) % runs.length;
     updateRunDisplay();
@@ -271,6 +364,7 @@ document.getElementById('nextRun').addEventListener('click', () => {
     updateRunDisplay();
 });
 
+// Update slider event to use 'input' instead of 'change' for real-time updates
 frameSlider.addEventListener('input', function(e) {
     const frame = parseInt(e.target.value);
     frameNumber.textContent = frame;
