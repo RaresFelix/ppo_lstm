@@ -1,383 +1,202 @@
 {% extends "layout.html" %}
 
-{% block title %}MiniGrid Game{% endblock %}
+{% block title %}PPO+LSTM Implementation Demo{% endblock %}
 
 {% block content %}
-<div class="bg-white shadow rounded-lg p-6">
-    <h2 class="text-2xl font-bold mb-4">MiniGrid Custom Maze</h2>
-    {% if error %}
-        <div class="text-red-500 mb-4">{{ error }}</div>
-    {% endif %}
-    <div class="game-container">
-        <div class="flex flex-col items-center">
-            <div class="mb-4">
-                <label class="inline-flex items-center cursor-pointer">
-                    <input type="checkbox" id="viewToggle" class="sr-only peer">
-                    <div class="relative w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-                    <span class="ml-3 text-sm font-medium text-gray-900">Agent View</span>
-                </label>
-            </div>
-            <canvas id="gameCanvas" 
-                    width="{{ render_width if render_width else 400 }}" 
-                    height="{{ render_height if render_height else 400 }}" 
-                    class="border border-gray-300">
-            </canvas>
-            <div class="flex justify-center space-x-4 mt-4">
-                <button data-action="0" class="action-btn px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">↺ (A)</button>
-                <button data-action="2" class="action-btn px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">↑ (W)</button>
-                <button data-action="1" class="action-btn px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">↻ (D)</button>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- New Visualization Section -->
-<div class="bg-white shadow rounded-lg p-4 mt-6">
-    <h2 class="text-xl font-bold mb-3">Agent Visualization</h2>
+<article class="bg-white shadow rounded-lg p-8 mb-8">
+    <h1 class="text-3xl font-bold mb-6">PPO+LSTM Implementation & Experiments</h1>
     
-    <!-- Modified Run Navigation to use flex container for vertical alignment -->
-    <div class="flex items-stretch justify-between relative">
-        <button id="prevRun" class="text-6xl font-bold text-[#da7756] px-4 hover:bg-gray-100 flex items-center">&lt;</button>
+    <div class="bg-gray-50 border-l-4 border-blue-500 p-4 mb-8">
+        <p class="text-lg"><strong>TLDR:</strong> I implemented PPO+LSTM from scratch and got it to solve three increasingly complex tasks: cartpole without velocity information, a memory-based navigation task, and finally a partially observable maze where the agent can only see a 3x3 area around itself, achieving an 80% success rate on 13x13 mazes with time limit 256 steps.</p>
+    </div>
+
+    <section class="mb-12">
+        <h2 class="text-2xl font-bold mb-4">History</h2>
+        <p class="text-gray-600 mb-6">On April 13th, 2019, OpenAI's Dota 2 AI system, OpenAI Five, became the first AI to beat a world champion team in an esports game. The algorithm behind this was proximal policy optimization(PPO) with LSTMs, which, given enough compute (a few thousand years of self-play), enabled it to achieve superhuman performance.</p>
         
-        <div class="flex-1">
-            <!-- Visualization container -->
-            <div class="flex flex-wrap justify-center items-center gap-0">
-                <!-- Maze View Container -->
-                <div class="relative w-fit">
-                    <div class="p-[4%] rounded-xl" style="background-color: #da7756;">
-                        <div class="bg-white">
-                            <img id="mazeFrame" class="w-full h-full object-contain aspect-square max-w-[400px]" src="" alt="Maze View">
-                        </div>
+        <p class="text-gray-600 mb-6">Inspired by this, I decided to implement it too. I've linked some blogs at the end of the post if you are interested in this.</p>
+        
+        <div class="bg-red-100 border-l-4 border-red-500 p-4 mb-6">
+            <p class="text-red-700">TODO: You can play all the games below on this Google Colab (in the browser). You can also try some below, but the server latency varies.</p>
+        </div>
+        
+        <p class="text-gray-600 mb-6">All the code for this project can be found in <a href="https://github.com/RaresFelix/ppo_lstm" class="text-blue-600 hover:underline">this GitHub repo</a>.</p>
+    </section>
+
+    <section class="mb-12">
+        <h2 class="text-2xl font-bold mb-4">Architecture</h2>
+        
+        <div class="bg-red-100 border-l-4 border-red-500 p-4 mb-6">
+            <p class="text-red-700">TODO: Add classic image of agent system interaction loop</p>
+        </div>
+        
+        <p class="text-gray-600 mb-6">For each environment, the agent receives an observation in the form of an array of numbers, and has to take an action.</p>
+        
+        <div class="bg-red-100 border-l-4 border-red-500 p-4 mb-6">
+            <p class="text-red-700">TODO: Add image of GUI vs agent observation</p>
+        </div>
+
+        <p class="text-gray-600 mb-6">For the agent to be able to form long-term connections, I used an LSTM (long short-term memory). It's a type of recurrent neural network that can handle longer term dependencies well. Chris Olah has a very good article on how LSTMs work here.</p>
+
+        <div class="bg-red-100 border-l-4 border-red-500 p-4 mb-6">
+            <p class="text-red-700">TODO: Add image of observation + lstm -> hidden states / features</p>
+        </div>
+
+        <p class="text-gray-600 mb-6">These hidden states / features act as memory for the agent.</p>
+
+        <div class="bg-red-100 border-l-4 border-red-500 p-4 mb-6">
+            <p class="text-red-700">TODO: Add image of features going into agent heads</p>
+        </div>
+
+        <p class="text-gray-600 mb-6">These can be used by the actor head to predict the best action, or by the critic head to predict "how good" the current state is (this is very useful during training).</p>
+    </section>
+
+    <section class="mb-12">
+        <h2 class="text-2xl font-bold mb-4">Example 1: Cartpole without velocities</h2>
+        
+        <p class="text-gray-600 mb-6">Cartpole is a classic reinforcement learning environment. The agent can see the position, angle, speed and angular velocity of a pole, and has to balance it for as long as possible.</p>
+        
+        <p class="text-gray-600 mb-6">You can play it yourself below. The interesting thing about it is that the human brain doesn't receive the velocities of the pole either. Using recurrent biological circuitry, your brain finds the velocities and approximates an algorithm for solving the problem.</p>
+
+        <div class="bg-red-100 border-l-4 border-red-500 p-4 mb-6">
+            <p class="text-red-700">TODO: Add Weights & Biases training graph</p>
+        </div>
+
+        <div class="bg-red-100 border-l-4 border-red-500 p-4 mb-6">
+            <p class="text-red-700">TODO: Add visualization of Cartpole without speed, memory heatmap, and playable demo</p>
+        </div>
+    </section>
+
+    <section class="mb-12">
+        <h2 class="text-2xl font-bold mb-4">Example 2: Minigrid Memory</h2>
+        
+        <p class="text-gray-600 mb-6">This is a demonstration of longer-term memory capabilities. The agent can see only the 3 x 3 area around him, and has to remember which object to select at the end of the hallway. You can see it's memory in time below.</p>
+
+        <div class="bg-red-100 border-l-4 border-red-500 p-4 mb-6">
+            <p class="text-red-700">TODO: Add Weights & Biases training graphs</p>
+        </div>
+
+        <div class="bg-red-100 border-l-4 border-red-500 p-4 mb-6">
+            <p class="text-red-700">TODO: Add visualization of minigrid memory with LSTM heatmap and slider</p>
+        </div>
+    </section>
+
+    <section class="mb-12">
+        <h2 class="text-2xl font-bold mb-4">Example 3: Minigrid Custom Maze</h2>
+        
+        <p class="text-gray-600 mb-6">This is a custom minigrid env I wrote for this project. The mazes are generated with Kruskal's algorithm.</p>
+    </section>
+
+    <section class="mb-12">
+        <h2 class="text-2xl font-bold mb-4">Interactive Demo</h2>
+        <p class="text-gray-600 mb-6">Try out the trained agent in a partially observable maze environment. The agent can only see a 3x3 area around itself.</p>
+        
+        <div class="bg-gray-50 p-6 rounded-lg">
+            {% if error %}
+                <div class="text-red-500 mb-4">{{ error }}</div>
+            {% endif %}
+            <div class="game-container">
+                <div class="flex flex-col items-center">
+                    <div class="mb-4">
+                        <label class="inline-flex items-center cursor-pointer">
+                            <input type="checkbox" id="viewToggle" class="sr-only peer">
+                            <div class="relative w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                            <span class="ml-3 text-sm font-medium text-gray-900">Agent View</span>
+                        </label>
                     </div>
-                </div>
-
-                <!-- Adaptive Connecting Line -->
-                <div class="hidden lg:block h-2.5 connecting-line" 
-                     style="background-color: #da7756; width: clamp(2rem, 5vw, 4rem); margin: 0 -2px;">
-                </div>
-
-                <!-- Memory Heatmap Container -->
-                <div class="relative w-fit">
-                    <div class="p-[4%] rounded-xl" style="background-color: #da7756;">
-                        <div class="bg-white">
-                            <img id="memoryHeatmap" class="w-full h-full object-contain aspect-square max-w-[240px]" src="" alt="Memory Heatmap">
-                        </div>
+                    <canvas id="gameCanvas" 
+                            width="{{ render_width if render_width else 400 }}" 
+                            height="{{ render_height if render_height else 400 }}" 
+                            class="border border-gray-300">
+                    </canvas>
+                    <div class="flex justify-center space-x-4 mt-4">
+                        <button data-action="0" class="action-btn px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">↺ (A)</button>
+                        <button data-action="2" class="action-btn px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">↑ (W)</button>
+                        <button data-action="1" class="action-btn px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">↻ (D)</button>
                     </div>
                 </div>
             </div>
         </div>
-        
-        <button id="nextRun" class="text-6xl font-bold text-[#da7756] px-4 hover:bg-gray-100 flex items-center">&gt;</button>
-    </div>
+    </section>
 
-    <!-- Run info and frame controls -->
-    <div class="mt-4 max-w-xl mx-auto text-center">
-        <div id="runInfo" class="text-sm text-gray-600 mb-2"></div>
-        <input 
-            type="range" 
-            id="frameSlider" 
-            class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-[#da7756]"
-            min="0" 
-            value="0"
-        >
-        <div class="text-center mt-2">
-            Frame: <span id="frameNumber">0</span> / <span id="maxFrame">0</span>
+    <section class="mb-12">
+        <h2 class="text-2xl font-bold mb-4">Agent Analysis</h2>
+        <p class="text-gray-600 mb-6">Visualize the agent's memory and decision-making process across different runs.</p>
+        
+        <div class="bg-gray-50 p-6 rounded-lg">
+            <!-- New Visualization Section -->
+            <div class="bg-white shadow rounded-lg p-4 mt-6">
+                <h2 class="text-xl font-bold mb-3">Agent Visualization</h2>
+                
+                <!-- Modified Run Navigation to use flex container for vertical alignment -->
+                <div class="flex items-stretch justify-between relative">
+                    <button id="prevRun" class="text-6xl font-bold text-[#da7756] px-4 hover:bg-gray-100 flex items-center">&lt;</button>
+                    
+                    <div class="flex-1">
+                        <!-- Visualization container -->
+                        <div class="flex flex-col lg:flex-row justify-center items-center gap-4 lg:gap-0 max-w-[800px] mx-auto">
+                            <!-- Maze View Container -->
+                            <div class="relative w-fit shrink-0">
+                                <div class="p-[4%] rounded-xl" style="background-color: #da7756;">
+                                    <div class="bg-white">
+                                        <img id="mazeFrame" class="w-full h-full object-contain aspect-square max-w-[350px]" src="" alt="Maze View">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Adaptive Connecting Line -->
+                            <div class="hidden lg:flex self-center h-2.5 connecting-line shrink-0" 
+                                 style="background-color: #da7756; width: clamp(2rem, 5vw, 4rem); margin: 0 -2px;">
+                            </div>
+
+                            <!-- Memory Heatmap Container -->
+                            <div class="relative w-fit shrink-0">
+                                <div class="p-[4%] rounded-xl" style="background-color: #da7756;">
+                                    <div class="bg-white">
+                                        <img id="memoryHeatmap" class="w-full h-full object-contain aspect-square max-w-[220px]" src="" alt="Memory Heatmap">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <button id="nextRun" class="text-6xl font-bold text-[#da7756] px-4 hover:bg-gray-100 flex items-center">&gt;</button>
+                </div>
+
+                <!-- Run info and frame controls -->
+                <div class="mt-4 max-w-xl mx-auto text-center">
+                    <div id="runInfo" class="text-sm text-gray-600 mb-2"></div>
+                    <input 
+                        type="range" 
+                        id="frameSlider" 
+                        class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-[#da7756]"
+                        min="0" 
+                        value="0"
+                    >
+                    <div class="text-center mt-2">
+                        Frame: <span id="frameNumber">0</span> / <span id="maxFrame">0</span>
+                    </div>
+                </div>
+            </div>
         </div>
-    </div>
-</div>
+    </section>
+</article>
 
 <style>
     @media (min-width: 1024px) {
         .connecting-line {
-            margin: 0 -0.25rem;
+            display: flex !important;
         }
     }
     @media (max-width: 1023px) {
         .connecting-line {
-            display: none;
+            display: none !important;
         }
     }
 </style>
 
+<script src="{{ url_for('static', filename='js/game.js') }}"></script>
 <script>
-const canvas = document.getElementById('gameCanvas');
-const ctx = canvas.getContext('2d', { alpha: false });
-let lastActionTime = 0;
-const DEBOUNCE_TIME = 100; // ms
-
-function displayGame(gameData) {
-    if (!gameData) return;
-    
-    try {
-        const width = gameData[0].length;
-        const height = gameData.length;
-        
-        // Update canvas size to match the container size
-        const container = canvas.parentElement;
-        const containerSize = Math.min(container.clientWidth, 400);
-        canvas.width = containerSize;
-        canvas.height = containerSize;
-        
-        // Clear the entire canvas
-        ctx.fillStyle = 'white';
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-        
-        // Create the image data
-        const buffer = new Uint8ClampedArray(width * height * 4);
-        const data = new ImageData(buffer, width, height);
-        
-        let i = 0;
-        for (let y = 0; y < height; y++) {
-            for (let x = 0; x < width; x++) {
-                const pixel = gameData[y][x];
-                buffer[i] = pixel[0];     // R
-                buffer[i + 1] = pixel[1]; // G
-                buffer[i + 2] = pixel[2]; // B
-                buffer[i + 3] = 255;      // A
-                i += 4;
-            }
-        }
-        
-        // Create a temporary canvas to hold the image data
-        const tempCanvas = document.createElement('canvas');
-        tempCanvas.width = width;
-        tempCanvas.height = height;
-        const tempCtx = tempCanvas.getContext('2d');
-        tempCtx.putImageData(data, 0, 0);
-        
-        // Calculate scaling and position to center the image
-        const scale = Math.min(canvas.width / width, canvas.height / height);
-        const scaledWidth = width * scale;
-        const scaledHeight = height * scale;
-        const x = (canvas.width - scaledWidth) / 2;
-        const y = (canvas.height - scaledHeight) / 2;
-        
-        // Draw the scaled image centered on the main canvas
-        ctx.imageSmoothingEnabled = false; // Keep pixel art sharp
-        ctx.drawImage(tempCanvas, x, y, scaledWidth, scaledHeight);
-        
-    } catch (error) {
-        console.error('Error displaying game:', error);
-    }
-}
-
-async function performAction(action) {
-    const now = Date.now();
-    if (now - lastActionTime < DEBOUNCE_TIME) return;
-    lastActionTime = now;
-
-    try {
-        const response = await fetch('/action', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ action: action })
-        });
-        
-        if (response.ok) {
-            const gameData = await response.json();
-            displayGame(gameData);
-        }
-    } catch (error) {
-        console.error('Error:', error);
-    }
-}
-
-// Add keyboard controls
-document.addEventListener('keydown', (e) => {
-    switch(e.key.toLowerCase()) {
-        case 'a': performAction(0); break;
-        case 'w': performAction(2); break;
-        case 'd': performAction(1); break;
-    }
-});
-
-// Add click listeners to all buttons
-document.querySelectorAll('.action-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-        performAction(parseInt(btn.dataset.action));
-    });
-});
-
-// Add view toggle handler
-document.getElementById('viewToggle').addEventListener('change', async (e) => {
-    try {
-        const response = await fetch('/toggle_view', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ agent_view: e.target.checked })
-        });
-        
-        if (response.ok) {
-            const gameData = await response.json();
-            displayGame(gameData);
-        }
-    } catch (error) {
-        console.error('Error:', error);
-    }
-});
-
-// Add new visualization controls
-const frameSlider = document.getElementById('frameSlider');
-const frameNumber = document.getElementById('frameNumber');
-const mazeFrame = document.getElementById('mazeFrame');
-const memoryHeatmap = document.getElementById('memoryHeatmap');
-
-// Run management
-let currentRunIndex = 0;
-let runs = [];
-
-// Add image caching
-const imageCache = {
-    maze: {},
-    memory: {}
-};
-
-async function preloadImages(runId, frameCount) {
-    const promises = [];
-    for (let i = 0; i < frameCount; i++) {
-        const frameStr = i.toString().padStart(4, '0');
-        
-        // Preload maze image
-        if (!imageCache.maze[`${runId}_${i}`]) {
-            const mazePromise = new Promise((resolve, reject) => {
-                const img = new Image();
-                img.onload = () => {
-                    imageCache.maze[`${runId}_${i}`] = img;
-                    resolve();
-                };
-                img.onerror = reject;
-                img.src = `/static/runs/${runId}/images/env_${frameStr}.png`;
-            });
-            promises.push(mazePromise);
-        }
-        
-        // Preload memory image
-        if (!imageCache.memory[`${runId}_${i}`]) {
-            const memoryPromise = new Promise((resolve, reject) => {
-                const img = new Image();
-                img.onload = () => {
-                    imageCache.memory[`${runId}_${i}`] = img;
-                    resolve();
-                };
-                img.onerror = reject;
-                img.src = `/static/runs/${runId}/images/memory_${frameStr}.png`;
-            });
-            promises.push(memoryPromise);
-        }
-    }
-    
-    try {
-        await Promise.all(promises);
-        console.log(`Preloaded all images for run ${runId}`);
-    } catch (error) {
-        console.error('Error preloading images:', error);
-    }
-}
-
-async function preloadInitialFrames() {
-    const promises = [];
-    for (const run of runs) {
-        const frameStr = '0000';
-        
-        // Only preload first frame of each run if not already cached
-        if (!imageCache.maze[`${run.id}_0`]) {
-            promises.push(new Promise((resolve, reject) => {
-                const img = new Image();
-                img.onload = () => {
-                    imageCache.maze[`${run.id}_0`] = img;
-                    resolve();
-                };
-                img.onerror = reject;
-                img.src = `/static/runs/${run.id}/images/env_${frameStr}.png`;
-            }));
-        }
-        
-        if (!imageCache.memory[`${run.id}_0`]) {
-            promises.push(new Promise((resolve, reject) => {
-                const img = new Image();
-                img.onload = () => {
-                    imageCache.memory[`${run.id}_0`] = img;
-                    resolve();
-                };
-                img.onerror = reject;
-                img.src = `/static/runs/${run.id}/images/memory_${frameStr}.png`;
-            }));
-        }
-    }
-    
-    try {
-        await Promise.all(promises);
-        console.log('Preloaded initial frames for all runs');
-    } catch (error) {
-        console.error('Error preloading initial frames:', error);
-    }
-}
-
-function updateImages(frame) {
-    const run = runs[currentRunIndex];
-    const mazeImg = imageCache.maze[`${run.id}_${frame}`];
-    const memoryImg = imageCache.memory[`${run.id}_${frame}`];
-    
-    if (mazeImg) mazeFrame.src = mazeImg.src;
-    if (memoryImg) memoryHeatmap.src = memoryImg.src;
-}
-
-async function loadRuns() {
-    const response = await fetch('/get_runs');
-    runs = await response.json();
-    if (runs.length > 0) {
-        // Preload initial frames first
-        await preloadInitialFrames();
-        updateRunDisplay();
-        updateFrameSlider();
-    }
-}
-
-async function updateRunDisplay() {
-    const run = runs[currentRunIndex];
-    document.getElementById('runInfo').textContent = run.id;
-    
-    // Start preloading images immediately
-    await preloadImages(run.id, run.frame_count);
-    updateFrameSlider();
-}
-
-function updateFrameSlider() {
-    const run = runs[currentRunIndex];
-    const frameSlider = document.getElementById('frameSlider');
-    frameSlider.max = run.frame_count - 1;
-    document.getElementById('maxFrame').textContent = run.frame_count - 1;
-    
-    // Reset to first frame
-    frameSlider.value = 0;
-    frameNumber.textContent = 0;
-    updateImages(0);
-}
-
-document.getElementById('prevRun').addEventListener('click', () => {
-    currentRunIndex = (currentRunIndex - 1 + runs.length) % runs.length;
-    updateRunDisplay();
-});
-
-document.getElementById('nextRun').addEventListener('click', () => {
-    currentRunIndex = (currentRunIndex + 1) % runs.length;
-    updateRunDisplay();
-});
-
-// Update slider event to use 'input' instead of 'change' for real-time updates
-frameSlider.addEventListener('input', function(e) {
-    const frame = parseInt(e.target.value);
-    frameNumber.textContent = frame;
-    updateImages(frame);
-});
-
-// Initialize
-loadRuns();
-
-// Remove or comment out the old initialization code
-// mazeFrame.src = '/static/images/env_0000.png';
-// memoryHeatmap.src = '/static/images/memory_0000.png';
-
 {% if game_render %}
 displayGame({{ game_render | tojson }});
 {% endif %}
