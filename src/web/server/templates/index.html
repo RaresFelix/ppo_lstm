@@ -1,4 +1,5 @@
 {% extends "layout.html" %}
+{% from "visualization.html" import agent_visualization %}
 
 {% block title %}PPO+LSTM Implementation Demo{% endblock %}
 
@@ -76,8 +77,8 @@
             <p class="text-red-700">TODO: Add Weights & Biases training graphs</p>
         </div>
 
-        <div class="bg-red-100 border-l-4 border-red-500 p-4 mb-6">
-            <p class="text-red-700">TODO: Add visualization of minigrid memory with LSTM heatmap and slider</p>
+        <div class="bg-gray-50 p-6 rounded-lg">
+            {{ agent_visualization("memory", title="Memory Task Analysis", left_width=400, right_width=250) }}
         </div>
     </section>
 
@@ -85,98 +86,47 @@
         <h2 class="text-2xl font-bold mb-4">Example 3: Minigrid Custom Maze</h2>
         
         <p class="text-gray-600 mb-6">This is a custom minigrid env I wrote for this project. The mazes are generated with Kruskal's algorithm.</p>
-    </section>
 
-    <section class="mb-12">
-        <h2 class="text-2xl font-bold mb-4">Interactive Demo</h2>
-        <p class="text-gray-600 mb-6">Try out the trained agent in a partially observable maze environment. The agent can only see a 3x3 area around itself.</p>
-        
-        <div class="bg-gray-50 p-6 rounded-lg">
-            {% if error %}
-                <div class="text-red-500 mb-4">{{ error }}</div>
-            {% endif %}
-            <div class="game-container">
-                <div class="flex flex-col items-center">
-                    <div class="mb-4">
-                        <label class="inline-flex items-center cursor-pointer">
-                            <input type="checkbox" id="viewToggle" class="sr-only peer">
-                            <div class="relative w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-                            <span class="ml-3 text-sm font-medium text-gray-900">Agent View</span>
-                        </label>
-                    </div>
-                    <canvas id="gameCanvas" 
-                            width="{{ render_width if render_width else 400 }}" 
-                            height="{{ render_height if render_height else 400 }}" 
-                            class="border border-gray-300">
-                    </canvas>
-                    <div class="flex justify-center space-x-4 mt-4">
-                        <button data-action="0" class="action-btn px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">↺ (A)</button>
-                        <button data-action="2" class="action-btn px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">↑ (W)</button>
-                        <button data-action="1" class="action-btn px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">↻ (D)</button>
+        <!-- Interactive Demo subsection -->
+        <div class="mb-8">
+            <h3 class="text-xl font-bold mb-4">Interactive Demo</h3>
+            <p class="text-gray-600 mb-6">Try out the trained agent in a partially observable maze environment. The agent can only see a 3x3 area around itself.</p>
+            
+            <div class="bg-gray-50 p-6 rounded-lg">
+                {% if error %}
+                    <div class="text-red-500 mb-4">{{ error }}</div>
+                {% endif %}
+                <div class="game-container">
+                    <div class="flex flex-col items-center">
+                        <div class="mb-4">
+                            <label class="inline-flex items-center cursor-pointer">
+                                <input type="checkbox" id="viewToggle" class="sr-only peer">
+                                <div class="relative w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                                <span class="ml-3 text-sm font-medium text-gray-900">Agent View</span>
+                            </label>
+                        </div>
+                        <canvas id="gameCanvas" 
+                                width="{{ render_width if render_width else 400 }}" 
+                                height="{{ render_height if render_height else 400 }}" 
+                                class="border border-gray-300">
+                        </canvas>
+                        <div class="flex justify-center space-x-4 mt-4">
+                            <button data-action="0" class="action-btn px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">↺ (A)</button>
+                            <button data-action="2" class="action-btn px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">↑ (W)</button>
+                            <button data-action="1" class="action-btn px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">↻ (D)</button>
+                        </div>
                     </div>
                 </div>
             </div>
         </div>
-    </section>
 
-    <section class="mb-12">
-        <h2 class="text-2xl font-bold mb-4">Agent Analysis</h2>
-        <p class="text-gray-600 mb-6">Visualize the agent's memory and decision-making process across different runs.</p>
-        
-        <div class="bg-gray-50 p-6 rounded-lg">
-            <!-- New Visualization Section -->
-            <div class="bg-white shadow rounded-lg p-4 mt-6">
-                <h2 class="text-xl font-bold mb-3">Agent Visualization</h2>
-                
-                <!-- Modified Run Navigation to use flex container for vertical alignment -->
-                <div class="flex items-stretch justify-between relative">
-                    <button id="prevRun" class="text-6xl font-bold text-[#da7756] px-4 hover:bg-gray-100 flex items-center">&lt;</button>
-                    
-                    <div class="flex-1">
-                        <!-- Visualization container -->
-                        <div class="flex flex-col lg:flex-row justify-center items-center gap-4 lg:gap-0 max-w-[800px] mx-auto">
-                            <!-- Maze View Container -->
-                            <div class="relative w-fit shrink-0">
-                                <div class="p-[4%] rounded-xl" style="background-color: #da7756;">
-                                    <div class="bg-white">
-                                        <img id="mazeFrame" class="w-full h-full object-contain aspect-square max-w-[350px]" src="" alt="Maze View">
-                                    </div>
-                                </div>
-                            </div>
-
-                            <!-- Adaptive Connecting Line -->
-                            <div class="hidden lg:flex self-center h-2.5 connecting-line shrink-0" 
-                                 style="background-color: #da7756; width: clamp(2rem, 5vw, 4rem); margin: 0 -2px;">
-                            </div>
-
-                            <!-- Memory Heatmap Container -->
-                            <div class="relative w-fit shrink-0">
-                                <div class="p-[4%] rounded-xl" style="background-color: #da7756;">
-                                    <div class="bg-white">
-                                        <img id="memoryHeatmap" class="w-full h-full object-contain aspect-square max-w-[220px]" src="" alt="Memory Heatmap">
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <button id="nextRun" class="text-6xl font-bold text-[#da7756] px-4 hover:bg-gray-100 flex items-center">&gt;</button>
-                </div>
-
-                <!-- Run info and frame controls -->
-                <div class="mt-4 max-w-xl mx-auto text-center">
-                    <div id="runInfo" class="text-sm text-gray-600 mb-2"></div>
-                    <input 
-                        type="range" 
-                        id="frameSlider" 
-                        class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-[#da7756]"
-                        min="0" 
-                        value="0"
-                    >
-                    <div class="text-center mt-2">
-                        Frame: <span id="frameNumber">0</span> / <span id="maxFrame">0</span>
-                    </div>
-                </div>
+        <!-- Agent Analysis subsection -->
+        <div class="mb-8">
+            <h3 class="text-xl font-bold mb-4">Agent Analysis</h3>
+            <p class="text-gray-600 mb-6">Visualize the agent's memory and decision-making process across different runs.</p>
+            
+            <div class="bg-gray-50 p-6 rounded-lg">
+                {{ agent_visualization("maze", title="Maze Navigation Analysis") }}
             </div>
         </div>
     </section>
@@ -196,9 +146,17 @@
 </style>
 
 <script src="{{ url_for('static', filename='js/game.js') }}"></script>
+<script src="{{ url_for('static', filename='js/visualization.js') }}"></script>
 <script>
 {% if game_render %}
 displayGame({{ game_render | tojson }});
 {% endif %}
+
+// Initialize visualizations
+document.addEventListener('DOMContentLoaded', function() {
+    // Initialize each visualization with its task type
+    new AgentVisualization('memory');
+    new AgentVisualization('maze');
+});
 </script>
 {% endblock %}
