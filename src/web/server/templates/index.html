@@ -27,17 +27,17 @@
     <section class="mb-12">
         <h2 class="text-2xl font-bold mb-4">Architecture</h2>
         
-        <div class="bg-red-100 border-l-4 border-red-500 p-4 mb-6">
-            <p class="text-red-700">TODO: Add classic image of agent system interaction loop</p>
-        </div>
+        <!-- <div class="flex justify-center mb-6">
+            <img src="/static/images/AgentEnvLoop1.png" alt="Agent-Environment Interaction Loop" class="max-w-full h-auto">
+        </div> -->
         
         <p class="text-gray-600 mb-6">For each environment, the agent receives an observation in the form of an array of numbers, and has to take an action.</p>
         
-        <div class="bg-red-100 border-l-4 border-red-500 p-4 mb-6">
+        <!-- <div class="bg-red-100 border-l-4 border-red-500 p-4 mb-6">
             <p class="text-red-700">TODO: Add image of GUI vs agent observation</p>
-        </div>
+        </div> -->
 
-        <p class="text-gray-600 mb-6">For the agent to be able to form long-term connections, I used an LSTM (long short-term memory). It's a type of recurrent neural network that can handle longer term dependencies well. Chris Olah has a very good article on how LSTMs work here.</p>
+        <p class="text-gray-600 mb-6">For the agent to be able to form long-term connections, I used an LSTM (long short-term memory). It's a type of recurrent neural network that can handle longer term dependencies well. Chris Olah has a very good article on how LSTMs work <a href="https://colah.github.io/posts/2015-08-Understanding-LSTMs" class="text-blue-600 hover:underline">here</a>.</p>
 
         <div class="bg-red-100 border-l-4 border-red-500 p-4 mb-6">
             <p class="text-red-700">TODO: Add image of observation + lstm -> hidden states / features</p>
@@ -45,9 +45,9 @@
 
         <p class="text-gray-600 mb-6">These hidden states / features act as memory for the agent.</p>
 
-        <div class="bg-red-100 border-l-4 border-red-500 p-4 mb-6">
+        <!-- <div class="bg-red-100 border-l-4 border-red-500 p-4 mb-6">
             <p class="text-red-700">TODO: Add image of features going into agent heads</p>
-        </div>
+        </div> -->
 
         <p class="text-gray-600 mb-6">These can be used by the actor head to predict the best action, or by the critic head to predict "how good" the current state is (this is very useful during training).</p>
     </section>
@@ -62,6 +62,7 @@
         <div class="bg-red-100 border-l-4 border-red-500 p-4 mb-6">
             <p class="text-red-700">TODO: Add Weights & Biases training graph</p>
         </div>
+        
 
         <div class="bg-red-100 border-l-4 border-red-500 p-4 mb-6">
             <p class="text-red-700">TODO: Add visualization of Cartpole without speed, memory heatmap, and playable demo</p>
@@ -73,13 +74,11 @@
         
         <p class="text-gray-600 mb-6">This is a demonstration of longer-term memory capabilities. The agent can see only the 3 x 3 area around him, and has to remember which object to select at the end of the hallway. You can see it's memory in time below.</p>
 
-        <div class="bg-red-100 border-l-4 border-red-500 p-4 mb-6">
-            <p class="text-red-700">TODO: Add Weights & Biases training graphs</p>
-        </div>
-
         <div class="bg-gray-50 p-6 rounded-lg">
             {{ agent_visualization("memory", title="Memory Task Analysis", left_width=400, right_width=250) }}
         </div>
+
+        <iframe src="https://api.wandb.ai/links/raresfelix/zods561s" style="border:none;height:1024px;width:100%"></iframe>
     </section>
 
     <section class="mb-12">

@@ -6,7 +6,10 @@ class AgentVisualization {
         this.runs = [];
         this.maxFrames = 0;
         this.imageCache = new Map();
-        this.preloadRadius = 5;
+        this.preloadRadius = 20;
+        this.loadingPromise = null;  // Add this line
+        this.loadedRuns = new Set();  // Add this line
+        this.isLoadingRuns = false;   // Add this line
 
         // Get DOM elements with task-specific IDs
         this.mainFrame = document.getElementById(`mainFrame_${taskType}`);
@@ -24,8 +27,65 @@ class AgentVisualization {
         const response = await fetch(`/api/runs/${this.taskType}`);
         this.runs = await response.json();
         if (this.runs.length > 0) {
+            // Load current run first
+            await this.preloadAllImages();
             this.updateVisualization();
+            // Start loading other runs in the background
+            this.loadRemainingRuns();
         }
+    }
+
+    async loadRemainingRuns() {
+        if (this.isLoadingRuns) return;
+        this.isLoadingRuns = true;
+
+        try {
+            for (let i = 0; i < this.runs.length; i++) {
+                if (i !== this.currentRun && !this.loadedRuns.has(i)) {
+                    const prevRun = this.currentRun;
+                    this.currentRun = i;
+                    await this.preloadAllImages();
+                    this.loadedRuns.add(i);
+                    this.currentRun = prevRun;
+                }
+            }
+        } finally {
+            this.isLoadingRuns = false;
+        }
+    }
+
+    async preloadAllImages() {
+        if (this.runs.length === 0) return;
+        if (this.loadedRuns.has(this.currentRun)) return;
+        
+        const run = this.runs[this.currentRun];
+        const totalFrames = run.frames;
+        
+        const loadPromises = [];
+        
+        for (let frame = 0; frame <= totalFrames - 1; frame++) {
+            const paddedFrame = String(frame).padStart(4, '0');
+            const mainUrl = `/api/frame/${this.taskType}/${run.id}/env/${paddedFrame}`;
+            const memoryUrl = `/api/frame/${this.taskType}/${run.id}/memory/${paddedFrame}`;
+            
+            for (const url of [mainUrl, memoryUrl]) {
+                if (!this.imageCache.has(url)) {
+                    const promise = new Promise((resolve, reject) => {
+                        const img = new Image();
+                        img.onload = () => resolve();
+                        img.onerror = () => reject();
+                        img.src = url;
+                        this.imageCache.set(url, img);
+                    });
+                    loadPromises.push(promise);
+                }
+            }
+        }
+        
+        this.loadingPromise = Promise.all(loadPromises);
+        await this.loadingPromise;
+
+        this.loadedRuns.add(this.currentRun);
     }
 
     setupEventListeners() {
@@ -33,50 +93,27 @@ class AgentVisualization {
         document.getElementById(`nextRun_${this.taskType}`).addEventListener('click', () => this.changeRun(1));
         this.frameSlider.addEventListener('input', (e) => {
             this.currentFrame = parseInt(e.target.value);
-            // Use a temporary preview while sliding
-            this.updateVisualizationThrottled();
-            // Preload images around new position
-            this.preloadImages(this.currentFrame);
+            this.updateVisualization();  // Remove throttling, update immediately
         });
 
-        this.frameSlider.addEventListener('change', () => {
-            // Final update when sliding stops
-            this.updateVisualization();
-        });
+        // Remove the 'change' event listener since we update immediately on 'input'
     }
 
-    changeRun(delta) {
-        this.currentRun = (this.currentRun + delta + this.runs.length) % this.runs.length;
+    async changeRun(delta) {
+        const newRun = (this.currentRun + delta + this.runs.length) % this.runs.length;
+        
+        // If the new run isn't loaded yet, load it
+        if (!this.loadedRuns.has(newRun)) {
+            const prevRun = this.currentRun;
+            this.currentRun = newRun;
+            await this.preloadAllImages();
+            // Continue loading remaining runs in the background
+            this.loadRemainingRuns();
+        }
+        
+        this.currentRun = newRun;
         this.currentFrame = 0;
         this.updateVisualization();
-    }
-
-    updateVisualizationThrottled() {
-        if (this.updateTimeout) clearTimeout(this.updateTimeout);
-        this.updateTimeout = setTimeout(() => this.updateVisualization(), 50);
-    }
-
-    async preloadImages(centerFrame) {
-        if (this.runs.length === 0) return;
-        
-        const run = this.runs[this.currentRun];
-        
-        for (let offset = -this.preloadRadius; offset <= this.preloadRadius; offset++) {
-            const frame = Math.max(0, Math.min(centerFrame + offset, this.maxFrames));
-            const paddedFrame = String(frame).padStart(4, '0');
-            
-            const mainUrl = `/api/frame/${this.taskType}/${run.id}/env/${paddedFrame}`;
-            const memoryUrl = `/api/frame/${this.taskType}/${run.id}/memory/${paddedFrame}`;
-            
-            // Only preload if not already in cache
-            for (const url of [mainUrl, memoryUrl]) {
-                if (!this.imageCache.has(url)) {
-                    const img = new Image();
-                    img.src = url;
-                    this.imageCache.set(url, img);
-                }
-            }
-        }
     }
 
     updateVisualization() {
@@ -89,8 +126,16 @@ class AgentVisualization {
         
         const paddedFrame = String(this.currentFrame).padStart(4, '0');
         
-        this.mainFrame.src = `/api/frame/${this.taskType}/${run.id}/env/${paddedFrame}`;
-        this.memoryHeatmap.src = `/api/frame/${this.taskType}/${run.id}/memory/${paddedFrame}`;
+        const mainUrl = `/api/frame/${this.taskType}/${run.id}/env/${paddedFrame}`;
+        const memoryUrl = `/api/frame/${this.taskType}/${run.id}/memory/${paddedFrame}`;
+        
+        // Use cached images
+        if (this.imageCache.has(mainUrl)) {
+            this.mainFrame.src = this.imageCache.get(mainUrl).src;
+        }
+        if (this.imageCache.has(memoryUrl)) {
+            this.memoryHeatmap.src = this.imageCache.get(memoryUrl).src;
+        }
         
         this.frameNumber.textContent = this.currentFrame;
         this.maxFrame.textContent = this.maxFrames;
