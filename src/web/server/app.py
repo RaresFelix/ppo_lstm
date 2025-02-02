@@ -1,6 +1,6 @@
 import os
 from glob import glob
-from flask import Flask, render_template, session, request, jsonify
+from flask import Flask, render_template, session, request, jsonify, send_file
 from src.web.server.game_manager import GameManager  # Use absolute import
 import secrets
 import logging
@@ -13,7 +13,7 @@ game_manager = GameManager()
 def get_available_runs():
     runs_dir = os.path.join(app.static_folder, 'runs')
     runs = []
-    for run_path in glob(os.path.join(runs_dir, 'run_*')):
+    for run_path in glob(os.path.join(runs_dir, '**/run_*'), recursive=True):
         run_id = os.path.basename(run_path)
         image_count = len(glob(os.path.join(run_path, 'images', 'env_*.png')))
         if image_count > 0:
@@ -86,5 +86,48 @@ def toggle_view():
         logging.error(f"Error toggling view: {str(e)}")
         return jsonify({'error': 'Internal server error'}), 500
 
+@app.route('/api/runs/<task_type>')
+def get_runs_for_task(task_type):
+    try:
+        runs_dir = os.path.join(app.static_folder, 'runs', task_type)
+        if not os.path.exists(runs_dir):
+            return jsonify([])
+
+        runs = []
+        for run_dir in sorted(glob(os.path.join(runs_dir, 'run_*')), reverse=True):
+            run_id = os.path.basename(run_dir)
+            image_count = len(glob(os.path.join(run_dir, 'images', 'env_*.png')))
+            if image_count > 0:
+                runs.append({
+                    'id': run_id,
+                    'frames': image_count
+                })
+        return jsonify(runs)
+    except Exception as e:
+        logging.error(f"Error getting runs for task {task_type}: {str(e)}")
+        return jsonify([])
+
+@app.route('/api/frame/<task_type>/<run_id>/<frame_type>/<frame>')
+def get_frame(task_type, run_id, frame_type, frame):
+    try:
+        frame_path = os.path.join(
+            app.static_folder,
+            'runs',
+            task_type,
+            run_id,
+            'images',
+            f'{frame_type}_{frame}.png'
+        )
+        
+        if not os.path.exists(frame_path):
+            logging.error(f"File not found: {frame_path}")
+            return '', 404
+            
+        return send_file(frame_path, mimetype='image/png')
+    except Exception as e:
+        logging.error(f"Error serving frame: {str(e)}")
+        return '', 404
+
 if __name__ == '__main__':
-    app.run(debug=True)
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
