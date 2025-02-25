@@ -10,7 +10,6 @@ Key features:
 - PPO algorithm implementation with LSTM for memory retention
 - Support for various environments including MiniGrid, custom mazes, and CartPole variants
 - Visualization tools for memory analysis and agent behavior
-- Web-based visualization interface
 - Configurable hyperparameters via command line or sweep configuration
 - Integration with Weights & Biases (wandb) for experiment tracking
 
@@ -20,8 +19,18 @@ Key features:
 ppo_lstm/
 ├── checkpoints/                  # Saved model checkpoints
 ├── configs/                      # Configuration files
+│   ├── sweep_config.yaml         # Sweep configuration for MiniGrid
+│   └── sweep_config cartpole.yaml # Sweep configuration for CartPole
 ├── images/                       # Project images and diagrams
 ├── important_checkpoints/        # Key model checkpoints
+├── notebooks/                    # Development notebooks (for exploration)
+├── outputs/                      # Generated outputs
+│   ├── logs/                     # Log files
+│   ├── videos/                   # Recorded agent videos
+│   └── visualizations/           # Visualization outputs
+├── scripts/                      # Utility scripts
+│   ├── experiments.sh            # Script for running multiple experiments
+│   └── run_sweep.sh              # Script for running hyperparameter sweeps
 ├── src/                          # Source code
 │   ├── environments/             # Environment implementations
 │   │   ├── cartpole_no_vel.py    # CartPole without velocity information
@@ -34,15 +43,11 @@ ppo_lstm/
 │   │   ├── config.py             # Configuration classes
 │   │   ├── main.py               # Main entry point
 │   │   └── networks.py           # Neural network architectures
-│   └── web/                      # Web visualization server
-│       └── server/               # Flask server for visualizations
+├── tests/                        # Test files
+│   └── test_main.py              # Main test file
 ├── visualisations/               # Visualization tools
 │   └── frame_extraction.py       # Tool for extracting memory visualization frames
-├── experiments.sh                # Script for running multiple experiments
-├── play.ipynb                    # Jupyter notebook for interactive play
-├── requirements.txt              # Project dependencies
-├── run_sweep.sh                  # Script for running hyperparameter sweeps
-└── sweep_config.yaml             # Hyperparameter sweep configuration
+└── requirements.txt              # Project dependencies
 ```
 
 ## Installation
@@ -95,7 +100,7 @@ python -m src.ppo_lstm.main \
 To run multiple experiments in parallel:
 
 ```bash
-bash experiments.sh
+bash scripts/experiments.sh
 ```
 
 ### Hyperparameter Sweep
@@ -104,31 +109,13 @@ To run a hyperparameter sweep using Weights & Biases:
 
 ```bash
 # Start a new sweep
-wandb sweep sweep_config.yaml
+wandb sweep configs/sweep_config.yaml
 
 # Run the sweep (replace SWEEP_ID with the actual ID)
-bash run_sweep.sh -s SWEEP_ID -g 0 -n 4
+bash scripts/run_sweep.sh -s SWEEP_ID -g 0 -n 4
 ```
 
 ## Visualization
-
-### Interactive Notebook
-
-The `play.ipynb` notebook allows you to interactively visualize trained agents:
-
-```bash
-jupyter notebook play.ipynb
-```
-
-### Web Interface
-
-Start the visualization server:
-
-```bash
-python -m src.web.server.app
-```
-
-Then open `http://localhost:5000` in your browser to view agent behavior and memory visualizations.
 
 ### Memory Visualization
 
