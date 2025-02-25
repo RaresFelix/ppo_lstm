@@ -7,4 +7,9 @@ videos/
 checkpoints/
 .pytest_cache/
 wandb/
+old_checkpoints/
 configs/
+src/web/server/static/runs/
+visualisations/images
+src/web/server/static/old_webruns
+important_checkpoints/

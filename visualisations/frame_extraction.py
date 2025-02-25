@@ -20,17 +20,17 @@ import plotly.graph_objects as go
 import os
 from datetime import datetime
 
-path = '/workspace/2501/ppo_lstm/important_checkpoints/CustomMazeRandomS15_1737796730/checkpoint_31457280.pt'
-env_id = 'MiniGrid-CustomMazeS13-v0'
+path = '/workspace/2501/ppo_lstm/important_checkpoints/ppo_lstm_MiniGrid-MemoryS13-v0_3x3_1737817367/checkpoint_4980736.pt'
+env_id = 'MiniGrid-MemoryS17Random-v0'
 
 def single_run(run_number, timestamp):
     num_envs = 1
     args = Args(
         env_id=env_id,
-        seq_len=64,
+        seq_len=8,
         num_envs=num_envs,
-        hidden_layer_size=256,
-        hidden_size=32,
+        hidden_layer_size=16,
+        hidden_size=8,
         view_size=3,
         deployment=True,
     )
@@ -52,8 +52,6 @@ def single_run(run_number, timestamp):
     for step in tqdm(range(256), desc=f"Generating frames for run {run_number}"):
         (obs_tensor, action, log_prob, value, next_observation, reward, 
                 next_done, next_hidden, infos) = agent.step_env()
-        if next_done.any():
-            break
         
         # Save environment image
         env_img = Image.fromarray(agent.envs.render()[0])
@@ -116,6 +114,9 @@ def single_run(run_number, timestamp):
         agent.observation = next_observation
         agent.hidden = next_hidden
         agent.done = next_done
+
+        if next_done.any():
+            break
 
     print(f"Run {run_number} completed. Frames and data saved to {base_output_dir}")
     return base_output_dir
